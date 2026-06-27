@@ -40,6 +40,13 @@ class Settings(BaseSettings):
         description="Verify connection health on checkout (pre-ping)"
     )
 
+    # File Storage configurations
+    UPLOAD_DIRECTORY: str = Field(
+        default="uploads/meetings",
+        description="Directory to store uploaded audio files"
+    )
+
+
     @property
     def ASYNC_DATABASE_URL(self) -> str:
         """

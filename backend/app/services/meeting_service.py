@@ -1,11 +1,12 @@
 """Service layer handling database operations and business logic for meetings."""
 
 import logging
+from datetime import datetime
+from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.meeting import Meeting
 from app.models.enums import MeetingStatus
-from app.schemas.meeting import MeetingCreate
 
 # Setup structured logger
 logger = logging.getLogger("app.services.meeting_service")
@@ -15,24 +16,34 @@ class MeetingService:
     """Service layer to handle database operations for Meetings."""
 
     @staticmethod
-    async def create_pending_meeting(db: AsyncSession, meeting_in: MeetingCreate) -> Meeting:
+    async def create_pending_meeting(
+        db: AsyncSession,
+        *,
+        title: str,
+        consent_given: bool,
+        file_path: str,
+        meeting_date: Optional[datetime] = None,
+        source: Optional[str] = None,
+        duration_minutes: Optional[int] = None,
+    ) -> Meeting:
         """
         Creates a new placeholder Meeting record in PENDING status.
         Ensures transaction commits, rollbacks on failure, and structured logging.
         """
         logger.info(
-            "Attempting to create pending meeting record: title=%s, source=%s",
-            meeting_in.title,
-            meeting_in.source,
+            "Attempting to create pending meeting record: title=%s, source=%s, file_path=%s",
+            title,
+            source,
+            file_path,
         )
 
         db_meeting = Meeting(
-            title=meeting_in.title,
-            consent_given=meeting_in.consent_given,
-            meeting_date=meeting_in.meeting_date,
-            source=meeting_in.source,
-            duration_minutes=meeting_in.duration_minutes,
-            file_path=meeting_in.file_path,
+            title=title,
+            consent_given=consent_given,
+            meeting_date=meeting_date,
+            source=source,
+            duration_minutes=duration_minutes,
+            file_path=file_path,
             status=MeetingStatus.PENDING,
         )
 
