@@ -13,7 +13,7 @@ celery_app = Celery(
     backend=redis_url,
 )
 
-# Apply configuration options matching constraints
+# Apply configuration options matching production hardening constraints
 celery_app.conf.update(
     task_serializer="json",
     result_serializer="json",
@@ -21,6 +21,11 @@ celery_app.conf.update(
     timezone="UTC",
     enable_utc=True,
     task_track_started=True,
+    
+    # Task reliability settings
+    task_acks_late=True,
+    task_reject_on_worker_lost=True,
+    broker_connection_retry_on_startup=True,
 )
 
 # Enable automatic task discovery within the workers package

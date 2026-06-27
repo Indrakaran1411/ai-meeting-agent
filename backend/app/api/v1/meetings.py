@@ -11,6 +11,7 @@ from app.db.database import get_db
 from app.schemas.meeting import MeetingResponseLightweight
 from app.services.meeting_service import MeetingService
 from app.services.storage_service import StorageService
+from app.workers.tasks import process_meeting
 
 # Setup structured logger
 logger = logging.getLogger("app.api.v1.meetings")
@@ -63,6 +64,13 @@ async def upload_meeting(
             source=source,
             duration_minutes=duration_minutes,
         )
+        # Enqueue Celery background processing task
+        try:
+            process_meeting.delay(str(meeting.id))
+            logger.info("API: Successfully enqueued Celery processing task for meeting ID: %s", meeting.id)
+        except Exception as queue_err:
+            logger.error("API: Failed to enqueue Celery task for meeting ID: %s. Error: %s", meeting.id, queue_err)
+
         return MeetingResponseLightweight(
             meeting_id=meeting.id,
             status=meeting.status,

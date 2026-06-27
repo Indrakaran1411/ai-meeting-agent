@@ -1,8 +1,10 @@
 """Service layer handling database operations and business logic for meetings."""
 
 import logging
+import uuid
 from datetime import datetime
 from typing import Optional
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.meeting import Meeting
@@ -65,3 +67,75 @@ class MeetingService:
                 exc_info=True,
             )
             raise
+
+    @staticmethod
+    async def mark_meeting_processing(
+        db: AsyncSession, 
+        meeting_id: uuid.UUID,
+        task_id: Optional[str] = None
+    ) -> Optional[Meeting]:
+        """
+        Transitions a meeting from PENDING to PROCESSING status.
+        Only commits if the current status is PENDING.
+        If already in PROCESSING, COMPLETED, or FAILED, it skips the update.
+        """
+        task_str = task_id or "N/A"
+        logger.info(
+            "Service: mark_meeting_processing started. meeting_id=%s, task_id=%s",
+            meeting_id,
+            task_str,
+        )
+        
+        db_meeting = await db.get(Meeting, meeting_id)
+        if not db_meeting:
+            logger.warning(
+                "Service: Meeting not found in database. meeting_id=%s, task_id=%s",
+                meeting_id,
+                task_str,
+            )
+            return None
+
+        current_status = db_meeting.status
+        if current_status != MeetingStatus.PENDING:
+            logger.info(
+                "Service: Duplicate execution skipped (status is already %s). meeting_id=%s, task_id=%s, current_status=%s",
+                current_status.value,
+                meeting_id,
+                task_str,
+                current_status.value,
+            )
+            return db_meeting
+
+        # Perform state transition
+        logger.info(
+            "Service: Transitioning meeting status from %s to %s. meeting_id=%s, task_id=%s, current_status=%s",
+            current_status.value,
+            MeetingStatus.PROCESSING.value,
+            meeting_id,
+            task_str,
+            current_status.value,
+        )
+        db_meeting.status = MeetingStatus.PROCESSING
+        
+        try:
+            await db.commit()
+            await db.refresh(db_meeting)
+            logger.info(
+                "Service: Database commit successful. Status changed to %s. meeting_id=%s, task_id=%s, current_status=%s",
+                db_meeting.status.value,
+                meeting_id,
+                task_str,
+                db_meeting.status.value,
+            )
+            return db_meeting
+        except Exception as e:
+            await db.rollback()
+            logger.error(
+                "Service: Error committing status change. Transaction rolled back. meeting_id=%s, task_id=%s, current_status=%s. Error: %s",
+                meeting_id,
+                task_str,
+                current_status.value,
+                str(e),
+                exc_info=True,
+            )
+            raise e

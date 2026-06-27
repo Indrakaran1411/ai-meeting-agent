@@ -46,6 +46,20 @@ class Settings(BaseSettings):
         description="Directory to store uploaded audio files"
     )
 
+    # Celery retry configurations
+    CELERY_MAX_RETRIES: int = Field(
+        default=3,
+        description="Max retries for Celery tasks"
+    )
+    CELERY_RETRY_BACKOFF: bool = Field(
+        default=True,
+        description="Enable Celery task retry backoff"
+    )
+    CELERY_RETRY_JITTER: bool = Field(
+        default=True,
+        description="Enable Celery task retry jitter"
+    )
+
 
     @property
     def ASYNC_DATABASE_URL(self) -> str:
