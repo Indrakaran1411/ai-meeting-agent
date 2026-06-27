@@ -496,6 +496,94 @@ class MeetingService:
         return await db.get(Meeting, meeting_id)
 
     @staticmethod
+    async def _update_entity(
+        db: AsyncSession,
+        model_cls: Any,
+        entity_id: uuid.UUID,
+        update_data: dict,
+        entity_name: str
+    ) -> Optional[Any]:
+        """
+        Private helper to perform common update logic for database entities.
+        Retrieves the entity, maps updated fields, commits once, and returns the refreshed entity.
+        """
+        logger.info(
+            "Service: Attempting to update %s. id=%s, fields=%s",
+            entity_name,
+            entity_id,
+            list(update_data.keys())
+        )
+
+        db_entity = await db.get(model_cls, entity_id)
+        if not db_entity:
+            logger.warning("Service: %s not found. id=%s", entity_name, entity_id)
+            return None
+
+        # Apply only explicitly provided/unset fields
+        for key, value in update_data.items():
+            if hasattr(db_entity, key):
+                setattr(db_entity, key, value)
+
+        try:
+            await db.commit()
+            await db.refresh(db_entity)
+            logger.info("Service: Successfully updated %s. id=%s", entity_name, entity_id)
+            return db_entity
+        except Exception as e:
+            await db.rollback()
+            logger.error(
+                "Service: Error updating %s. Transaction rolled back. id=%s. Error: %s",
+                entity_name,
+                entity_id,
+                str(e),
+                exc_info=True
+            )
+            raise e
+
+    @staticmethod
+    async def update_action_item(
+        db: AsyncSession,
+        action_item_id: uuid.UUID,
+        update_data: dict
+    ) -> Optional[Any]:
+        """
+        Updates an action item.
+        """
+        from app.models.action_item import ActionItem
+        return await MeetingService._update_entity(
+            db, ActionItem, action_item_id, update_data, "ActionItem"
+        )
+
+    @staticmethod
+    async def update_decision(
+        db: AsyncSession,
+        decision_id: uuid.UUID,
+        update_data: dict
+    ) -> Optional[Any]:
+        """
+        Updates a decision.
+        """
+        from app.models.decision import Decision
+        return await MeetingService._update_entity(
+            db, Decision, decision_id, update_data, "Decision"
+        )
+
+    @staticmethod
+    async def update_risk(
+        db: AsyncSession,
+        risk_id: uuid.UUID,
+        update_data: dict
+    ) -> Optional[Any]:
+        """
+        Updates a risk.
+        """
+        from app.models.risk import Risk
+        return await MeetingService._update_entity(
+            db, Risk, risk_id, update_data, "Risk"
+        )
+
+
+    @staticmethod
     async def get_paginated_meetings(
         db: AsyncSession,
         *,

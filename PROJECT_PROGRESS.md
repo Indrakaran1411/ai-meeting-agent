@@ -153,6 +153,16 @@ The **AI Meeting Agent** is an enterprise-grade platform designed to ingest meet
   - Verified `summary_preview` property computes and returns a maximum of 200 characters followed by ellipsis.
   - Verified `noload` optimizations execute cleanly, preventing additional selectin queries for transcripts and insights.
 
+### T7.2: Meeting Update API
+* **Objective**: Expose PATCH REST endpoints to partially update AI-extracted action items, decisions, and risks.
+* **Files**: `backend/app/schemas/meeting.py` (Modified), `backend/app/services/meeting_service.py` (Modified), `backend/app/api/v1/meetings.py` (Modified).
+* **Verification**:
+  - Verified validation constraints via custom update schemas (`ActionItemUpdateRequest`, `DecisionUpdateRequest`, `RiskUpdateRequest`), protecting fields like ID, meeting ID, and verbatim quotes.
+  - Verified `update_action_item`, `update_decision`, and `update_risk` routes.
+  - Verified true partial updates using `exclude_unset=True` to only modify payload-specified fields.
+  - Verified database commits, rollbacks, and automatic triggers on `updated_at` timestamps.
+  - Verified correct `404 Not Found` responses when querying missing insight UUIDs.
+
 ---
 
 ## Current Project Status

@@ -19,7 +19,10 @@ from app.schemas.meeting import (
     DecisionResponse,
     RiskResponse,
     MeetingListResponse,
-    MeetingListResponseItem
+    MeetingListResponseItem,
+    ActionItemUpdateRequest,
+    DecisionUpdateRequest,
+    RiskUpdateRequest
 )
 from app.services.meeting_service import MeetingService
 from app.services.storage_service import StorageService
@@ -37,11 +40,11 @@ def create_summary_preview(summary: Optional[str], max_length: int = 200) -> Opt
 
 
 # Initialize FastAPI APIRouter
-router = APIRouter(prefix="/meetings", tags=["Meetings"])
+router = APIRouter(tags=["Meetings"])
 
 
 @router.post(
-    "/upload",
+    "/meetings/upload",
     response_model=MeetingResponseLightweight,
     status_code=status.HTTP_202_ACCEPTED,
     summary="Upload and register a new meeting",
@@ -118,7 +121,7 @@ async def upload_meeting(
 
 
 @router.get(
-    "/{meeting_id}",
+    "/meetings/{meeting_id}",
     response_model=MeetingDetailResponse,
     status_code=status.HTTP_200_OK,
     summary="Get full details of a specific meeting",
@@ -143,7 +146,7 @@ async def get_meeting(
 
 
 @router.get(
-    "/{meeting_id}/summary",
+    "/meetings/{meeting_id}/summary",
     response_model=MeetingSummaryResponse,
     status_code=status.HTTP_200_OK,
     summary="Get summary of a specific meeting",
@@ -168,7 +171,7 @@ async def get_meeting_summary(
 
 
 @router.get(
-    "/{meeting_id}/action-items",
+    "/meetings/{meeting_id}/action-items",
     response_model=List[ActionItemResponse],
     status_code=status.HTTP_200_OK,
     summary="Get action items of a specific meeting",
@@ -195,7 +198,7 @@ async def get_meeting_action_items(
 
 
 @router.get(
-    "/{meeting_id}/decisions",
+    "/meetings/{meeting_id}/decisions",
     response_model=List[DecisionResponse],
     status_code=status.HTTP_200_OK,
     summary="Get decisions of a specific meeting",
@@ -222,7 +225,7 @@ async def get_meeting_decisions(
 
 
 @router.get(
-    "/{meeting_id}/risks",
+    "/meetings/{meeting_id}/risks",
     response_model=List[RiskResponse],
     status_code=status.HTTP_200_OK,
     summary="Get risks of a specific meeting",
@@ -249,7 +252,7 @@ async def get_meeting_risks(
 
 
 @router.get(
-    "",
+    "/meetings",
     response_model=MeetingListResponse,
     status_code=status.HTTP_200_OK,
     summary="List paginated meetings",
@@ -297,5 +300,105 @@ async def list_meetings(
 
     logger.info("API: Returning paginated meetings. total_count=%d, item_count=%d", total_count, len(response_items))
     return MeetingListResponse(total_count=total_count, items=response_items)
+
+
+@router.patch(
+    "/action-items/{action_item_id}",
+    response_model=ActionItemResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Partially update an action item",
+    description="Updates only the provided fields of a specific action item.",
+    tags=["Action Items"],
+)
+async def patch_action_item(
+    action_item_id: uuid.UUID,
+    payload: ActionItemUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    logger.info("API: PATCH action item. id=%s", action_item_id)
+    update_dict = payload.model_dump(exclude_unset=True)
+    
+    updated_item = await MeetingService.update_action_item(db, action_item_id, update_dict)
+    if not updated_item:
+        logger.warning("API: Action item not found. id=%s", action_item_id)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Action item with ID {action_item_id} not found."
+        )
+
+    logger.info(
+        "API: Action item updated. id=%s, meeting_id=%s, fields=%s",
+        updated_item.id,
+        updated_item.meeting_id,
+        list(update_dict.keys())
+    )
+    return updated_item
+
+
+@router.patch(
+    "/decisions/{decision_id}",
+    response_model=DecisionResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Partially update a decision",
+    description="Updates only the provided fields of a specific decision.",
+    tags=["Decisions"],
+)
+async def patch_decision(
+    decision_id: uuid.UUID,
+    payload: DecisionUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    logger.info("API: PATCH decision. id=%s", decision_id)
+    update_dict = payload.model_dump(exclude_unset=True)
+
+    updated_item = await MeetingService.update_decision(db, decision_id, update_dict)
+    if not updated_item:
+        logger.warning("API: Decision not found. id=%s", decision_id)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Decision with ID {decision_id} not found."
+        )
+
+    logger.info(
+        "API: Decision updated. id=%s, meeting_id=%s, fields=%s",
+        updated_item.id,
+        updated_item.meeting_id,
+        list(update_dict.keys())
+    )
+    return updated_item
+
+
+@router.patch(
+    "/risks/{risk_id}",
+    response_model=RiskResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Partially update a risk",
+    description="Updates only the provided fields of a specific risk.",
+    tags=["Risks"],
+)
+async def patch_risk(
+    risk_id: uuid.UUID,
+    payload: RiskUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    logger.info("API: PATCH risk. id=%s", risk_id)
+    update_dict = payload.model_dump(exclude_unset=True)
+
+    updated_item = await MeetingService.update_risk(db, risk_id, update_dict)
+    if not updated_item:
+        logger.warning("API: Risk not found. id=%s", risk_id)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Risk with ID {risk_id} not found."
+        )
+
+    logger.info(
+        "API: Risk updated. id=%s, meeting_id=%s, fields=%s",
+        updated_item.id,
+        updated_item.meeting_id,
+        list(update_dict.keys())
+    )
+    return updated_item
+
 
 

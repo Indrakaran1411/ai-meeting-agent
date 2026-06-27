@@ -136,3 +136,27 @@ class MeetingListResponse(BaseModel):
     items: List[MeetingListResponseItem]
 
 
+class ActionItemUpdateRequest(BaseModel):
+    """Schema for validating action item partial updates."""
+    description: Optional[str] = Field(None, min_length=1, description="Updated description of the action item")
+    assignee: Optional[str] = Field(None, max_length=256, description="Responsible person")
+    due_date: Optional[date] = Field(None, description="Deadline of the task")
+    status: Optional[InsightStatus] = Field(None, description="Insight workflow status")
+
+
+class DecisionUpdateRequest(BaseModel):
+    """Schema for validating decision partial updates."""
+    description: Optional[str] = Field(None, min_length=1, description="Summary of the decision")
+    rationale: Optional[str] = Field(None, description="Reasoning behind the decision")
+    status: Optional[InsightStatus] = Field(None, description="Insight workflow status")
+
+
+class RiskUpdateRequest(BaseModel):
+    """Schema for validating risk partial updates."""
+    description: Optional[str] = Field(None, min_length=1, description="Updated risk description")
+    severity: Optional[RiskSeverity] = Field(None, description="Risk severity scale")
+    mitigation: Optional[str] = Field(None, description="Suggested mitigation plan")
+    status: Optional[InsightStatus] = Field(None, description="Insight workflow status")
+
+
+
