@@ -119,6 +119,14 @@ The **AI Meeting Agent** is an enterprise-grade platform designed to ingest meet
   - Verified that the `Meeting` status successfully transitions to `COMPLETED` inside a single database transaction.
   - Verified idempotency: checking for the presence of a `Transcript` record (rather than calling `COUNT(*)`) allows process aborts, ensuring no duplicate rows or Whisper inference calls occur on duplicate task execution.
 
+### T6.1: AI Insight Extraction Orchestration
+* **Objective**: Create the AI orchestration layer that analyzes a meeting transcript using Gemini and returns structured meeting insights.
+* **Files**: `backend/app/services/ai_service.py` (Created), `backend/app/services/meeting_analysis_service.py` (Created), `backend/app/prompts/meeting_analysis.py` (Created), `backend/app/schemas/meeting_analysis.py` (Created), `backend/app/workers/tasks.py` (Modified), `backend/app/core/config.py` (Modified), `.env.example` (Modified), `backend/requirements.txt` (Modified).
+* **Verification**:
+  - Verified package `google-genai` installs and compiles successfully.
+  - Verified structured outputs validate perfectly against the `MeetingAnalysis` Pydantic model response schema.
+  - Verified end-to-end flow executes `MeetingAnalysisService` after successful transcript persistence without performing any database writes for AI output.
+
 ---
 
 ## Current Project Status

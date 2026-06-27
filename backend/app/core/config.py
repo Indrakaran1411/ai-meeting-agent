@@ -88,6 +88,25 @@ class Settings(BaseSettings):
         description="Enable Voice Activity Detection (VAD) to filter out silences"
     )
 
+    # Google Gemini configurations
+    GEMINI_API_KEY: Optional[str] = Field(
+        default=None,
+        description="Google Gemini API key"
+    )
+    GEMINI_MODEL: str = Field(
+        default="gemini-2.5-flash",
+        description="Gemini model name to use"
+    )
+    GEMINI_TEMPERATURE: float = Field(
+        default=0.2,
+        description="Temperature for Gemini text generation"
+    )
+    GEMINI_MAX_OUTPUT_TOKENS: Optional[int] = Field(
+        default=4096,
+        description="Max output tokens for Gemini generation"
+    )
+
+
 
     @property
     def ASYNC_DATABASE_URL(self) -> str:

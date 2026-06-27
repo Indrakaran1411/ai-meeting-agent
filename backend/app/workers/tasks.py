@@ -205,6 +205,46 @@ async def async_process_meeting(task_id_str: str, meeting_id_str: str) -> None:
                 )
                 raise persist_err
 
+        # 4. Invoke MeetingAnalysisService to analyze the transcript text
+        logger.info(
+            "Task: Triggering AI analysis layer. meeting_id=%s, task_id=%s",
+            meeting_uuid,
+            task_id_str,
+        )
+
+        from app.services.meeting_analysis_service import MeetingAnalysisService
+
+        try:
+            analysis_result = await MeetingAnalysisService.analyze_transcript(
+                transcript_text=result.full_text,
+                meeting_id=str(meeting_uuid),
+                task_id=task_id_str,
+            )
+            # Log the structured extraction result as required by the verification steps
+            logger.info(
+                "Task: AI analysis completed. Extracted structured MeetingAnalysis successfully. "
+                "meeting_id=%s, task_id=%s, summary_key_points=%d, action_items=%d, decisions=%d, risks=%d, chat_signals=%d, "
+                "full_extracted_insights=%s",
+                meeting_uuid,
+                task_id_str,
+                len(analysis_result.summary.key_points),
+                len(analysis_result.action_items),
+                len(analysis_result.decisions),
+                len(analysis_result.risks),
+                len(analysis_result.chat_signals),
+                analysis_result.model_dump_json(indent=2)
+            )
+        except Exception as ai_err:
+            logger.error(
+                "Task: AI analysis failed. meeting_id=%s, task_id=%s. Error: %s",
+                meeting_uuid,
+                task_id_str,
+                str(ai_err),
+                exc_info=True,
+            )
+            raise ai_err
+
+
 
 @celery_app.task(
     bind=True,
