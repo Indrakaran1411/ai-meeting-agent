@@ -3,7 +3,7 @@
 import logging
 import uuid
 from datetime import datetime
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Any
 from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -284,4 +284,204 @@ class MeetingService:
                 exc_info=True,
             )
             raise e
+
+    @staticmethod
+    async def save_meeting_analysis(
+        db: AsyncSession,
+        meeting_id: uuid.UUID,
+        analysis: Any,
+        task_id: Optional[str] = None
+    ) -> bool:
+        """
+        Persists ActionItems, Decisions, Risks, and ChatSignals extracted by the AI analysis
+        into their respective PostgreSQL tables within a single transaction.
+        Checks for existing insights (idempotency check) before inserting.
+        """
+        task_str = task_id or "N/A"
+        logger.info(
+            "Service: save_meeting_analysis started. meeting_id=%s, task_id=%s",
+            meeting_id,
+            task_str
+        )
+
+        from sqlalchemy import select
+        from app.models.action_item import ActionItem
+        from app.models.decision import Decision
+        from app.models.risk import Risk
+        from app.models.chat_signal import ChatSignal
+        from app.models.enums import RiskSeverity, SignalType, InsightStatus
+
+        # 1. Verify that the meeting exists in the database
+        db_meeting = await db.get(Meeting, meeting_id)
+        if not db_meeting:
+            logger.warning(
+                "Service: Meeting not found for analysis persistence. meeting_id=%s, task_id=%s",
+                meeting_id,
+                task_str
+            )
+            return False
+
+        # 2. Idempotency Check: query for existing insights (ActionItem, Decision, Risk)
+        # or check if the meeting summary is already populated.
+        has_summary = db_meeting.summary is not None
+
+        stmt_act = select(ActionItem.id).where(ActionItem.meeting_id == meeting_id).limit(1)
+        has_act = (await db.execute(stmt_act)).scalar_one_or_none() is not None
+
+        stmt_dec = select(Decision.id).where(Decision.meeting_id == meeting_id).limit(1)
+        has_dec = (await db.execute(stmt_dec)).scalar_one_or_none() is not None
+
+        stmt_risk = select(Risk.id).where(Risk.meeting_id == meeting_id).limit(1)
+        has_risk = (await db.execute(stmt_risk)).scalar_one_or_none() is not None
+
+        if has_summary or has_act or has_dec or has_risk:
+            logger.info(
+                "Service: AI insights already exist for meeting (Idempotency skip). "
+                "meeting_id=%s, task_id=%s, has_summary=%s, has_action_items=%s, has_decisions=%s, has_risks=%s",
+                meeting_id,
+                task_str,
+                has_summary,
+                has_act,
+                has_dec,
+                has_risk
+            )
+            return True
+
+
+
+        # Helper function to parse Date from string safely
+        from datetime import datetime, date
+        def parse_date(date_str: Optional[str]) -> Optional[date]:
+            if not date_str:
+                return None
+            # Strip whitespace
+            clean_str = date_str.strip()
+            # Try parsing YYYY-MM-DD
+            for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%d-%m-%Y"):
+                try:
+                    return datetime.strptime(clean_str, fmt).date()
+                except ValueError:
+                    continue
+            return None
+
+        # 3. Create ORM models inside single transaction context
+        # 3a. Save high_level_summary to Meeting model summary attribute
+        if analysis.summary and hasattr(analysis.summary, "high_level_summary"):
+            db_meeting.summary = analysis.summary.high_level_summary
+            logger.info(
+                "Service: Populated meeting summary metadata. meeting_id=%s, task_id=%s",
+                meeting_id,
+                task_str
+            )
+
+        # 3b. Build Action Items
+        action_items_count = 0
+        for act in analysis.action_items:
+            due_date_parsed = parse_date(act.due_date)
+            db_act = ActionItem(
+                meeting_id=meeting_id,
+                description=act.description,
+                assignee=act.assignee,
+                due_date=due_date_parsed,
+                verbatim_quote=act.verbatim_quote,
+                status=InsightStatus.DRAFT
+            )
+            db.add(db_act)
+            action_items_count += 1
+
+        # 3c. Build Decisions
+        decisions_count = 0
+        for dec in analysis.decisions:
+            db_dec = Decision(
+                meeting_id=meeting_id,
+                description=dec.description,
+                rationale=dec.rationale,
+                verbatim_quote=dec.verbatim_quote,
+                status=InsightStatus.DRAFT
+            )
+            db.add(db_dec)
+            decisions_count += 1
+
+        # 3d. Build Risks
+        risks_count = 0
+        for rsk in analysis.risks:
+            # Map severity safely to RiskSeverity Enum
+            try:
+                severity_enum = RiskSeverity(rsk.severity.lower())
+            except ValueError:
+                logger.warning(
+                    "Service: Unknown risk severity value '%s'. Defaulting to MEDIUM. meeting_id=%s, task_id=%s",
+                    rsk.severity,
+                    meeting_id,
+                    task_str
+                )
+                severity_enum = RiskSeverity.MEDIUM
+
+            db_rsk = Risk(
+                meeting_id=meeting_id,
+                description=rsk.description,
+                severity=severity_enum,
+                mitigation=rsk.mitigation,
+                verbatim_quote=rsk.verbatim_quote,
+                status=InsightStatus.DRAFT
+            )
+            db.add(db_rsk)
+            risks_count += 1
+
+        # 3e. Build Chat Signals
+        signals_count = 0
+        for sig in analysis.chat_signals:
+            # Map signal type safely to SignalType Enum
+            try:
+                sig_type_enum = SignalType(sig.signal_type.lower())
+            except ValueError:
+                logger.warning(
+                    "Service: Unknown signal type value '%s'. Defaulting to GENERAL. meeting_id=%s, task_id=%s",
+                    sig.signal_type,
+                    meeting_id,
+                    task_str
+                )
+                sig_type_enum = SignalType.GENERAL
+
+            db_sig = ChatSignal(
+                source=sig.source or "meeting_chat",
+                channel_id=sig.channel_id or "unknown",
+                message_id=sig.message_id or str(uuid.uuid4()),
+                sender_name=sig.sender_name,
+                content=sig.content,
+                signal_type=sig_type_enum,
+                confidence=sig.confidence
+            )
+            db.add(db_sig)
+            signals_count += 1
+
+        # 4. Commit transaction
+        try:
+            logger.info(
+                "Service: Committing database inserts. meeting_id=%s, task_id=%s, action_items=%d, decisions=%d, risks=%d, chat_signals=%d",
+                meeting_id,
+                task_str,
+                action_items_count,
+                decisions_count,
+                risks_count,
+                signals_count
+            )
+            await db.commit()
+            logger.info(
+                "Service: Transaction commit successful (AI Insights Persisted). meeting_id=%s, task_id=%s",
+                meeting_id,
+                task_str
+            )
+            return True
+        except Exception as e:
+            await db.rollback()
+            logger.error(
+                "Service: Error committing AI insights. Transaction rolled back. meeting_id=%s, task_id=%s. Error: %s",
+                meeting_id,
+                task_str,
+                str(e),
+                exc_info=True
+            )
+            raise e
+
 

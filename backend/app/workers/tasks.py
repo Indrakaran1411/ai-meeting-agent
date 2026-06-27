@@ -244,6 +244,30 @@ async def async_process_meeting(task_id_str: str, meeting_id_str: str) -> None:
             )
             raise ai_err
 
+        # 5. Open a fresh database session and persist the AI insights
+        logger.info(
+            "Task: Persisting extracted AI insights to database. meeting_id=%s, task_id=%s",
+            meeting_uuid,
+            task_id_str,
+        )
+        async with async_session_maker() as session:
+            try:
+                await MeetingService.save_meeting_analysis(
+                    db=session,
+                    meeting_id=meeting_uuid,
+                    analysis=analysis_result,
+                    task_id=task_id_str,
+                )
+            except Exception as db_err:
+                logger.error(
+                    "Task: Failed to persist AI insights to database. meeting_id=%s, task_id=%s. Error: %s",
+                    meeting_uuid,
+                    task_id_str,
+                    str(db_err),
+                    exc_info=True,
+                )
+                raise db_err
+
 
 
 @celery_app.task(

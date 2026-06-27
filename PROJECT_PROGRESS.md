@@ -127,6 +127,14 @@ The **AI Meeting Agent** is an enterprise-grade platform designed to ingest meet
   - Verified structured outputs validate perfectly against the `MeetingAnalysis` Pydantic model response schema.
   - Verified end-to-end flow executes `MeetingAnalysisService` after successful transcript persistence without performing any database writes for AI output.
 
+### T6.2: Persist AI Insights to PostgreSQL
+* **Objective**: Persist structured AI analysis insights (ActionItems, Decisions, Risks, and ChatSignals) into PostgreSQL within a single database transaction.
+* **Files**: `backend/app/services/meeting_service.py` (Modified), `backend/app/workers/tasks.py` (Modified).
+* **Verification**:
+  - Verified that generated summaries are saved to the `meetings.summary` column.
+  - Verified that `ActionItem`, `Decision`, `Risk`, and `ChatSignal` records are created and associated successfully inside a single transaction.
+  - Verified database level idempotency: querying for existing records skips inserts on duplicate execution.
+
 ---
 
 ## Current Project Status
