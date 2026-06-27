@@ -1,6 +1,8 @@
 from functools import lru_cache
+from typing import Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
+
 
 class Settings(BaseSettings):
     """
@@ -58,6 +60,32 @@ class Settings(BaseSettings):
     CELERY_RETRY_JITTER: bool = Field(
         default=True,
         description="Enable Celery task retry jitter"
+    )
+
+    # Whisper Speech-to-Text configurations
+    WHISPER_MODEL_SIZE: str = Field(
+        default="base",
+        description="Faster-Whisper model size to use, e.g. tiny, base, small, medium, large-v3"
+    )
+    WHISPER_DEVICE: str = Field(
+        default="cpu",
+        description="Device to run inference on, e.g. cpu, cuda"
+    )
+    WHISPER_COMPUTE_TYPE: str = Field(
+        default="int8",
+        description="Compute type/quantization to use, e.g. float16, int8, int8_float16"
+    )
+    WHISPER_BEAM_SIZE: int = Field(
+        default=5,
+        description="Beam size for transcription decoding"
+    )
+    WHISPER_LANGUAGE: Optional[str] = Field(
+        default=None,
+        description="Specify default language for transcription. If None, auto-detected."
+    )
+    WHISPER_VAD_FILTER: bool = Field(
+        default=True,
+        description="Enable Voice Activity Detection (VAD) to filter out silences"
     )
 
 

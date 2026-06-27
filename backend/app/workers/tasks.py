@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import time
 import uuid
 from typing import Optional
 
@@ -42,7 +43,7 @@ def health_check() -> dict:
 async def async_process_meeting(task_id_str: str, meeting_id_str: str) -> None:
     """
     Async coroutine handling the actual database lookup and status transition.
-    Integrates detailed structured logging.
+    Integrates detailed structured logging and triggers the TranscriptionService.
     """
     logger.info(
         "Task: Starting async processing coroutine. meeting_id=%s, task_id=%s",
@@ -61,7 +62,9 @@ async def async_process_meeting(task_id_str: str, meeting_id_str: str) -> None:
         )
         return
 
-    # Instantiate a dedicated AsyncSession for the background worker
+    file_path = None
+
+    # 1. State transition: Mark meeting as PROCESSING in the database
     async with async_session_maker() as session:
         try:
             logger.info(
@@ -70,7 +73,6 @@ async def async_process_meeting(task_id_str: str, meeting_id_str: str) -> None:
                 task_id_str,
             )
             
-            # Delegate to MeetingService for status transition
             meeting = await MeetingService.mark_meeting_processing(
                 session, meeting_uuid, task_id=task_id_str
             )
@@ -89,6 +91,7 @@ async def async_process_meeting(task_id_str: str, meeting_id_str: str) -> None:
                 task_id_str,
                 meeting.status.value,
             )
+            file_path = meeting.file_path
                 
         except Exception as e:
             logger.error(
@@ -112,6 +115,52 @@ async def async_process_meeting(task_id_str: str, meeting_id_str: str) -> None:
                 meeting_uuid,
                 task_id_str,
             )
+
+    # 2. Run TranscriptionService (Executed outside the session to free DB pool connection)
+    if file_path:
+        logger.info(
+            "Task: Transcription started. meeting_id=%s, task_id=%s, audio_file=%s, "
+            "model_size=%s, device=%s, compute_type=%s",
+            meeting_uuid,
+            task_id_str,
+            file_path,
+            settings.WHISPER_MODEL_SIZE,
+            settings.WHISPER_DEVICE,
+            settings.WHISPER_COMPUTE_TYPE,
+        )
+
+        start_time = time.perf_counter()
+        
+        from app.services.transcription_service import TranscriptionService
+        
+        # Run transcription CPU-bound work in executor to keep event loop responsive
+        loop = asyncio.get_running_loop()
+        segments, info = await loop.run_in_executor(
+            None,
+            TranscriptionService.transcribe_file,
+            file_path,
+            str(meeting_uuid),
+            task_id_str,
+        )
+        
+        transcription_duration = time.perf_counter() - start_time
+        audio_duration = getattr(info, "duration", 0.0)
+        segment_count = len(segments)
+
+        logger.info(
+            "Task: Transcription completed. meeting_id=%s, task_id=%s, audio_file=%s, "
+            "model_size=%s, device=%s, compute_type=%s, "
+            "transcription_time_seconds=%.3f, audio_duration_seconds=%.3f, segment_count=%d",
+            meeting_uuid,
+            task_id_str,
+            file_path,
+            settings.WHISPER_MODEL_SIZE,
+            settings.WHISPER_DEVICE,
+            settings.WHISPER_COMPUTE_TYPE,
+            transcription_duration,
+            audio_duration,
+            segment_count,
+        )
 
 
 @celery_app.task(
