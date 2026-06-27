@@ -43,7 +43,7 @@ def health_check() -> dict:
 async def async_process_meeting(task_id_str: str, meeting_id_str: str) -> None:
     """
     Async coroutine handling the actual database lookup and status transition.
-    Integrates detailed structured logging and triggers the TranscriptionService.
+    Orchestrates checking out the meeting, triggering TranscriptionService, and logging.
     """
     logger.info(
         "Task: Starting async processing coroutine. meeting_id=%s, task_id=%s",
@@ -73,7 +73,7 @@ async def async_process_meeting(task_id_str: str, meeting_id_str: str) -> None:
                 task_id_str,
             )
             
-            meeting = await MeetingService.mark_meeting_processing(
+            meeting, should_continue = await MeetingService.mark_meeting_processing(
                 session, meeting_uuid, task_id=task_id_str
             )
             
@@ -82,6 +82,17 @@ async def async_process_meeting(task_id_str: str, meeting_id_str: str) -> None:
                     "Task: Meeting not found in database (Meeting Not Found). meeting_id=%s, task_id=%s",
                     meeting_uuid,
                     task_id_str,
+                )
+                return
+
+            if not should_continue:
+                logger.info(
+                    "Task: Duplicate execution detected (status is already %s). Aborting task. "
+                    "meeting_id=%s, task_id=%s, current_status=%s",
+                    meeting.status.value,
+                    meeting_uuid,
+                    task_id_str,
+                    meeting.status.value,
                 )
                 return
 
@@ -119,48 +130,80 @@ async def async_process_meeting(task_id_str: str, meeting_id_str: str) -> None:
     # 2. Run TranscriptionService (Executed outside the session to free DB pool connection)
     if file_path:
         logger.info(
-            "Task: Transcription started. meeting_id=%s, task_id=%s, audio_file=%s, "
-            "model_size=%s, device=%s, compute_type=%s",
+            "Task: Initing transcription orchestration. meeting_id=%s, task_id=%s, file_path=%s",
             meeting_uuid,
             task_id_str,
             file_path,
-            settings.WHISPER_MODEL_SIZE,
-            settings.WHISPER_DEVICE,
-            settings.WHISPER_COMPUTE_TYPE,
         )
 
-        start_time = time.perf_counter()
-        
         from app.services.transcription_service import TranscriptionService
         
-        # Run transcription CPU-bound work in executor to keep event loop responsive
-        loop = asyncio.get_running_loop()
-        segments, info = await loop.run_in_executor(
-            None,
-            TranscriptionService.transcribe_file,
-            file_path,
-            str(meeting_uuid),
-            task_id_str,
-        )
-        
-        transcription_duration = time.perf_counter() - start_time
-        audio_duration = getattr(info, "duration", 0.0)
-        segment_count = len(segments)
+        try:
+            # Run transcription CPU-bound work in executor to keep event loop responsive
+            loop = asyncio.get_running_loop()
+            result = await loop.run_in_executor(
+                None,
+                TranscriptionService.transcribe_file,
+                file_path,
+                str(meeting_uuid),
+                task_id_str,
+            )
+        except Exception as stt_err:
+            logger.error(
+                "Task: Transcription failed (Transcription Failure). Transitioning meeting status to FAILED. meeting_id=%s, task_id=%s. Error: %s",
+                meeting_uuid,
+                task_id_str,
+                str(stt_err),
+                exc_info=True,
+            )
+            # Transition to FAILED inside a separate transaction
+            async with async_session_maker() as session:
+                try:
+                    await MeetingService.mark_meeting_failed(
+                        session, meeting_uuid, task_id=task_id_str
+                    )
+                except Exception as fail_err:
+                    logger.critical(
+                        "Task: Critical error transitioning meeting status to FAILED. meeting_id=%s, task_id=%s. Error: %s",
+                        meeting_uuid,
+                        task_id_str,
+                        str(fail_err),
+                    )
+            raise stt_err
 
         logger.info(
-            "Task: Transcription completed. meeting_id=%s, task_id=%s, audio_file=%s, "
-            "model_size=%s, device=%s, compute_type=%s, "
+            "Task: Transcription completed successfully. meeting_id=%s, task_id=%s, file_path=%s, "
+            "model_size=%s, detected_language=%s, "
             "transcription_time_seconds=%.3f, audio_duration_seconds=%.3f, segment_count=%d",
             meeting_uuid,
             task_id_str,
             file_path,
             settings.WHISPER_MODEL_SIZE,
-            settings.WHISPER_DEVICE,
-            settings.WHISPER_COMPUTE_TYPE,
-            transcription_duration,
-            audio_duration,
-            segment_count,
+            result.detected_language,
+            result.transcription_duration,
+            result.audio_duration,
+            len(result.segments),
         )
+
+        # 3. Persist the transcription results inside a single database transaction
+        async with async_session_maker() as session:
+            try:
+                await MeetingService.save_transcript_and_complete(
+                    session,
+                    meeting_uuid,
+                    full_text=result.full_text,
+                    audio_duration=result.audio_duration,
+                    task_id=task_id_str
+                )
+            except Exception as persist_err:
+                logger.error(
+                    "Task: Failed to persist transcript. meeting_id=%s, task_id=%s. Error: %s",
+                    meeting_uuid,
+                    task_id_str,
+                    str(persist_err),
+                    exc_info=True,
+                )
+                raise persist_err
 
 
 @celery_app.task(

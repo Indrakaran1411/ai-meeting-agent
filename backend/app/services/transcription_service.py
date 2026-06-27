@@ -4,10 +4,10 @@ import logging
 import os
 import threading
 import time
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Generator, List, Tuple
+from typing import Any, Dict, List
 
-import numpy as np
 from faster_whisper import WhisperModel
 
 from app.core.config import settings
@@ -15,15 +15,24 @@ from app.core.config import settings
 logger = logging.getLogger("app.services.transcription_service")
 
 
+@dataclass
+class TranscriptionResult:
+    """Dataclass holding materialized transcription results."""
+    full_text: str
+    detected_language: str
+    audio_duration: float
+    transcription_duration: float
+    segments: List[Dict[str, Any]]
+
+
 class TranscriptionService:
     """
     Service class implementing a lazy-loaded, thread-safe Faster-Whisper model singleton.
-    Provides methods to validate audio files, perform model warmup, and transcribe audio.
+    Provides methods to validate audio files and transcribe audio.
     """
 
     _model: WhisperModel = None
     _lock = threading.Lock()
-    _warmed_up = False
 
     # Supported audio file extensions
     SUPPORTED_EXTENSIONS = {".mp3", ".wav", ".m4a"}
@@ -32,7 +41,7 @@ class TranscriptionService:
     def get_model(cls) -> WhisperModel:
         """
         Retrieves the singleton WhisperModel instance, initializing it in a thread-safe
-        manner if it does not already exist, and warming it up.
+        manner if it does not already exist.
         """
         if cls._model is None:
             with cls._lock:
@@ -49,43 +58,14 @@ class TranscriptionService:
                         device=settings.WHISPER_DEVICE,
                         compute_type=settings.WHISPER_COMPUTE_TYPE,
                     )
-                    cls._warmup_model()
         return cls._model
-
-    @classmethod
-    def _warmup_model(cls) -> None:
-        """
-        Performs a lightweight warmup inference using 1 second of silence (zero array)
-        to trigger graph compilation and avoid first-run latency.
-        """
-        if not cls._warmed_up and cls._model is not None:
-            logger.info("TranscriptionService: Starting model warmup run...")
-            start_time = time.perf_counter()
-            # 1 second of silence at 16kHz sampling rate
-            warmup_audio = np.zeros(16000, dtype=np.float32)
-            try:
-                # Run transcription on silence (generator must be iterated to execute)
-                segments, _ = cls._model.transcribe(warmup_audio, beam_size=1)
-                list(segments)
-                cls._warmed_up = True
-                warmup_duration = time.perf_counter() - start_time
-                logger.info(
-                    "TranscriptionService: Model warmup completed successfully in %.3f seconds.",
-                    warmup_duration,
-                )
-            except Exception as e:
-                logger.error(
-                    "TranscriptionService: Warmup run failed. Error: %s",
-                    str(e),
-                    exc_info=True,
-                )
 
     @classmethod
     def validate_audio_file(cls, file_path: str) -> None:
         """
         Validates the audio file path before initiating transcription.
         Verifies existence, non-zero size, extension support, and read permissions.
-        Raises ValueError or FileNotFoundError if validation fails.
+        Raises FileNotFoundError, PermissionError, or ValueError if validation fails.
         """
         path = Path(file_path)
 
@@ -120,21 +100,31 @@ class TranscriptionService:
         file_path: str,
         meeting_id: str = "N/A",
         task_id: str = "N/A"
-    ) -> Tuple[List[Any], Any]:
+    ) -> TranscriptionResult:
         """
-        Transcribes a local audio file and returns the list of segments and transcription info.
+        Transcribes a local audio file and returns a materialized TranscriptionResult object.
         Integrates structured logging with meeting_id, task_id, and transcription details.
         """
-        # Validate the audio file
+        # 1. Validate existence of the audio file BEFORE loading the model
         cls.validate_audio_file(file_path)
 
-        # Retrieve the singleton model (loads/warms up if needed)
-        model = cls.get_model()
+        # 2. Retrieve the singleton model with explicit error handling for model loading failure
+        try:
+            model = cls.get_model()
+        except Exception as model_err:
+            logger.error(
+                "TranscriptionService: Failed to load Whisper model. meeting_id=%s, task_id=%s. Error: %s",
+                meeting_id,
+                task_id,
+                str(model_err),
+                exc_info=True,
+            )
+            raise RuntimeError(f"Whisper model loading failed: {model_err}") from model_err
 
         language_param = settings.WHISPER_LANGUAGE if settings.WHISPER_LANGUAGE else None
 
         logger.info(
-            "TranscriptionService: Starting transcription. meeting_id=%s, task_id=%s, audio_file=%s, "
+            "TranscriptionService: Starting transcription. meeting_id=%s, task_id=%s, file_path=%s, "
             "model_size=%s, device=%s, compute_type=%s, beam_size=%d, language=%s, vad_filter=%s",
             meeting_id,
             task_id,
@@ -158,33 +148,48 @@ class TranscriptionService:
                 vad_filter=settings.WHISPER_VAD_FILTER,
             )
 
-            # Consume the generator to perform actual transcription in memory
-            segments = list(segments_generator)
-            
-            transcription_duration = time.perf_counter() - start_time
-            segment_count = len(segments)
-            audio_duration = getattr(info, "duration", 0.0)
+            # Materialize the segments generator into a reusable list of dictionaries
+            materialized_segments = []
+            for seg in segments_generator:
+                materialized_segments.append({
+                    "start": seg.start,
+                    "end": seg.end,
+                    "text": seg.text,
+                })
 
+            transcription_duration = time.perf_counter() - start_time
+            segment_count = len(materialized_segments)
+            audio_duration = getattr(info, "duration", 0.0)
+            detected_language = getattr(info, "language", "unknown")
+
+            # Compute combined full text from materialized segments
+            full_text = " ".join([s["text"].strip() for s in materialized_segments]).strip()
+
+            # Log with required structured format
             logger.info(
-                "TranscriptionService: Transcription completed. meeting_id=%s, task_id=%s, audio_file=%s, "
-                "model_size=%s, device=%s, compute_type=%s, "
-                "transcription_time_seconds=%.3f, audio_duration_seconds=%.3f, segment_count=%d",
+                "TranscriptionService: Transcription completed successfully. "
+                "meeting_id=%s, file_path=%s, model_size=%s, detected_language=%s, "
+                "audio_duration=%.3f, transcription_duration=%.3f, segment_count=%d",
                 meeting_id,
-                task_id,
                 file_path,
                 settings.WHISPER_MODEL_SIZE,
-                settings.WHISPER_DEVICE,
-                settings.WHISPER_COMPUTE_TYPE,
-                transcription_duration,
+                detected_language,
                 audio_duration,
+                transcription_duration,
                 segment_count,
             )
 
-            return segments, info
+            return TranscriptionResult(
+                full_text=full_text,
+                detected_language=detected_language,
+                audio_duration=audio_duration,
+                transcription_duration=transcription_duration,
+                segments=materialized_segments,
+            )
 
         except Exception as e:
             logger.error(
-                "TranscriptionService: Transcription failed. meeting_id=%s, task_id=%s, audio_file=%s. Error: %s",
+                "TranscriptionService: Transcription failed. meeting_id=%s, task_id=%s, file_path=%s. Error: %s",
                 meeting_id,
                 task_id,
                 file_path,

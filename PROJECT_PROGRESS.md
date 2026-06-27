@@ -102,6 +102,23 @@ The **AI Meeting Agent** is an enterprise-grade platform designed to ingest meet
   - Verified task idempotency: duplicate executions are safely skipped at the service level, generating no extra DB writes.
   - Verified connection loop safety by maintaining thread-local loops, preventing event-loop collisions without disposing the shared AsyncEngine pool.
 
+### T5.1: Speech-to-Text Integration
+* **Objective**: Integrate Faster-Whisper into the background processing pipeline to transcribe uploaded meeting audio.
+* **Files**: `backend/app/services/transcription_service.py` (Created), `backend/app/workers/tasks.py` (Modified), `backend/app/core/config.py` (Modified), `backend/requirements.txt` (Modified), `.env.example` (Modified).
+* **Verification**:
+  - Verified packages `faster-whisper` and `numpy` install successfully.
+  - Verified class-level locking guarantees single model initialization per worker process.
+  - Verified validation logic rejects missing and empty files with appropriate `FileNotFoundError` and `ValueError`.
+  - Verified end-to-end transcription of uploaded audio file completes successfully outside of database session.
+
+### T5.2: Transcript Database Persistence
+* **Objective**: Persist Faster-Whisper transcription results into the database after successful transcription.
+* **Files**: `backend/app/services/meeting_service.py` (Modified), `backend/app/workers/tasks.py` (Modified).
+* **Verification**:
+  - Verified that a single `Transcript` row is persisted containing the full text and linked to the correct `Meeting` entity.
+  - Verified that the `Meeting` status successfully transitions to `COMPLETED` inside a single database transaction.
+  - Verified idempotency: checking for the presence of a `Transcript` record (rather than calling `COUNT(*)`) allows process aborts, ensuring no duplicate rows or Whisper inference calls occur on duplicate task execution.
+
 ---
 
 ## Current Project Status
