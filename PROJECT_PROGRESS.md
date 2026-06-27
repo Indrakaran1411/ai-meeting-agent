@@ -135,6 +135,14 @@ The **AI Meeting Agent** is an enterprise-grade platform designed to ingest meet
   - Verified that `ActionItem`, `Decision`, `Risk`, and `ChatSignal` records are created and associated successfully inside a single transaction.
   - Verified database level idempotency: querying for existing records skips inserts on duplicate execution.
 
+### T6.3: Meeting Insights Retrieval API
+* **Objective**: Expose the persisted AI insights (Summaries, ActionItems, Decisions, and Risks) through read-only REST API endpoints.
+* **Files**: `backend/app/schemas/meeting.py` (Modified), `backend/app/services/meeting_service.py` (Modified), `backend/app/api/v1/meetings.py` (Modified).
+* **Verification**:
+  - Verified all GET endpoints correctly retrieve details, summaries, action items, decisions, and risks for completed meetings.
+  - Verified 404 responses return correctly when meeting UUID is missing or invalid.
+  - Documented that `ChatSignal` is currently an independent entity pending downstream Slack/Teams integration.
+
 ---
 
 ## Current Project Status

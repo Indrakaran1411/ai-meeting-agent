@@ -7,8 +7,17 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Form, File, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import uuid
+from typing import Optional, List
 from app.db.database import get_db
-from app.schemas.meeting import MeetingResponseLightweight
+from app.schemas.meeting import (
+    MeetingResponseLightweight,
+    MeetingDetailResponse,
+    MeetingSummaryResponse,
+    ActionItemResponse,
+    DecisionResponse,
+    RiskResponse
+)
 from app.services.meeting_service import MeetingService
 from app.services.storage_service import StorageService
 from app.workers.tasks import process_meeting
@@ -95,3 +104,135 @@ async def upload_meeting(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal database error occurred while registering meeting.",
         )
+
+
+@router.get(
+    "/{meeting_id}",
+    response_model=MeetingDetailResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get full details of a specific meeting",
+    description="Retrieves a meeting's metadata, processing status, and summary description.",
+)
+async def get_meeting(
+    meeting_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Endpoint handler to fetch meeting metadata and state.
+    """
+    logger.info("API: Fetching meeting details. meeting_id=%s", meeting_id)
+    meeting = await MeetingService.get_meeting_by_id(db, meeting_id)
+    if not meeting:
+        logger.warning("API: Meeting not found. meeting_id=%s", meeting_id)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Meeting with ID {meeting_id} not found.",
+        )
+    return meeting
+
+
+@router.get(
+    "/{meeting_id}/summary",
+    response_model=MeetingSummaryResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get summary of a specific meeting",
+    description="Retrieves only the AI-generated high-level summary paragraph for a meeting.",
+)
+async def get_meeting_summary(
+    meeting_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Endpoint handler to fetch meeting summary text.
+    """
+    logger.info("API: Fetching meeting summary. meeting_id=%s", meeting_id)
+    meeting = await MeetingService.get_meeting_by_id(db, meeting_id)
+    if not meeting:
+        logger.warning("API: Meeting not found. meeting_id=%s", meeting_id)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Meeting with ID {meeting_id} not found.",
+        )
+    return MeetingSummaryResponse(meeting_id=meeting.id, summary=meeting.summary)
+
+
+@router.get(
+    "/{meeting_id}/action-items",
+    response_model=List[ActionItemResponse],
+    status_code=status.HTTP_200_OK,
+    summary="Get action items of a specific meeting",
+    description="Retrieves all AI-extracted action items associated with a meeting.",
+)
+async def get_meeting_action_items(
+    meeting_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Endpoint handler to fetch action items list.
+    """
+    logger.info("API: Fetching meeting action items. meeting_id=%s", meeting_id)
+    meeting = await MeetingService.get_meeting_by_id(db, meeting_id)
+    if not meeting:
+        logger.warning("API: Meeting not found. meeting_id=%s", meeting_id)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Meeting with ID {meeting_id} not found.",
+        )
+    action_items = meeting.action_items
+    logger.info("API: Returning action items. meeting_id=%s, count=%d", meeting_id, len(action_items))
+    return action_items
+
+
+@router.get(
+    "/{meeting_id}/decisions",
+    response_model=List[DecisionResponse],
+    status_code=status.HTTP_200_OK,
+    summary="Get decisions of a specific meeting",
+    description="Retrieves all AI-extracted decisions associated with a meeting.",
+)
+async def get_meeting_decisions(
+    meeting_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Endpoint handler to fetch decisions list.
+    """
+    logger.info("API: Fetching meeting decisions. meeting_id=%s", meeting_id)
+    meeting = await MeetingService.get_meeting_by_id(db, meeting_id)
+    if not meeting:
+        logger.warning("API: Meeting not found. meeting_id=%s", meeting_id)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Meeting with ID {meeting_id} not found.",
+        )
+    decisions = meeting.decisions
+    logger.info("API: Returning decisions. meeting_id=%s, count=%d", meeting_id, len(decisions))
+    return decisions
+
+
+@router.get(
+    "/{meeting_id}/risks",
+    response_model=List[RiskResponse],
+    status_code=status.HTTP_200_OK,
+    summary="Get risks of a specific meeting",
+    description="Retrieves all AI-extracted risks associated with a meeting.",
+)
+async def get_meeting_risks(
+    meeting_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Endpoint handler to fetch risks list.
+    """
+    logger.info("API: Fetching meeting risks. meeting_id=%s", meeting_id)
+    meeting = await MeetingService.get_meeting_by_id(db, meeting_id)
+    if not meeting:
+        logger.warning("API: Meeting not found. meeting_id=%s", meeting_id)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Meeting with ID {meeting_id} not found.",
+        )
+    risks = meeting.risks
+    logger.info("API: Returning risks. meeting_id=%s, count=%d", meeting_id, len(risks))
+    return risks
+

@@ -1,11 +1,12 @@
 """Pydantic schemas for Meeting API validation."""
 
 import uuid
-from datetime import datetime
-from typing import Optional
-from pydantic import BaseModel, Field
+from datetime import datetime, date
+from typing import Optional, List
+from pydantic import BaseModel, Field, ConfigDict
 
-from app.models.enums import MeetingStatus
+from app.models.enums import MeetingStatus, InsightStatus, RiskSeverity
+
 
 
 class MeetingCreate(BaseModel):
@@ -46,3 +47,71 @@ class MeetingResponseLightweight(BaseModel):
     meeting_id: uuid.UUID
     status: MeetingStatus
     message: str
+
+
+class ActionItemResponse(BaseModel):
+    """Schema for action item retrieval."""
+    id: uuid.UUID
+    meeting_id: uuid.UUID
+    description: str
+    assignee: Optional[str] = None
+    due_date: Optional[date] = None
+    verbatim_quote: Optional[str] = None
+    status: InsightStatus
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DecisionResponse(BaseModel):
+    """Schema for decision retrieval."""
+    id: uuid.UUID
+    meeting_id: uuid.UUID
+    description: str
+    rationale: Optional[str] = None
+    verbatim_quote: Optional[str] = None
+    status: InsightStatus
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class RiskResponse(BaseModel):
+    """Schema for risk retrieval."""
+    id: uuid.UUID
+    meeting_id: uuid.UUID
+    description: str
+    severity: RiskSeverity
+    verbatim_quote: Optional[str] = None
+    mitigation: Optional[str] = None
+    status: InsightStatus
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MeetingSummaryResponse(BaseModel):
+    """Schema for meeting summary retrieval."""
+    meeting_id: uuid.UUID
+    summary: Optional[str] = None
+
+
+class MeetingDetailResponse(BaseModel):
+    """Schema for full meeting detail retrieval."""
+    id: uuid.UUID
+    title: str
+    meeting_date: Optional[datetime] = None
+    duration_minutes: Optional[int] = None
+    source: Optional[str] = None
+    consent_given: bool
+    status: MeetingStatus
+    file_path: Optional[str] = None
+    summary: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+

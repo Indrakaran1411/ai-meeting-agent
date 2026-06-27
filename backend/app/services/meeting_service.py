@@ -484,4 +484,16 @@ class MeetingService:
             )
             raise e
 
+    @staticmethod
+    async def get_meeting_by_id(
+        db: AsyncSession,
+        meeting_id: uuid.UUID
+    ) -> Optional[Meeting]:
+        """
+        Retrieves a meeting record by its unique ID.
+        """
+        logger.info("Service: Querying meeting details. meeting_id=%s", meeting_id)
+        return await db.get(Meeting, meeting_id)
+
+
 
