@@ -1,0 +1,95 @@
+# =============================================================================
+# .gitignore — Meeting Intelligence Agent
+# Python 3.11 / FastAPI / Docker / PostgreSQL / VS Code / macOS
+# =============================================================================
+
+# ---------------------
+# Python
+# ---------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ---------------------
+# Testing & Coverage
+# ---------------------
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# ---------------------
+# Type checking & Linting
+# ---------------------
+.mypy_cache/
+.ruff_cache/
+.dmypy.json
+dmypy.json
+
+# ---------------------
+# Environments & Secrets
+# ---------------------
+.env
+.env.local
+.env.*.local
+
+# ---------------------
+# IDE / Editors
+# ---------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ---------------------
+# macOS
+# ---------------------
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# ---------------------
+# Docker
+# ---------------------
+docker-compose.override.yml
+
+# ---------------------
+# Databases (local dev)
+# ---------------------
+*.db
+*.sqlite3
+
+# ---------------------
+# Logs
+# ---------------------
+*.log
+
+# ---------------------
+# Misc
+# ---------------------
+*.bak
+*.tmp
