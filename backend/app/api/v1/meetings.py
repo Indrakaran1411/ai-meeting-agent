@@ -4,19 +4,22 @@ import logging
 import os
 from datetime import datetime
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Form, File, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, status, Form, File, UploadFile, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import uuid
 from typing import Optional, List
 from app.db.database import get_db
+from app.models.enums import MeetingStatus
 from app.schemas.meeting import (
     MeetingResponseLightweight,
     MeetingDetailResponse,
     MeetingSummaryResponse,
     ActionItemResponse,
     DecisionResponse,
-    RiskResponse
+    RiskResponse,
+    MeetingListResponse,
+    MeetingListResponseItem
 )
 from app.services.meeting_service import MeetingService
 from app.services.storage_service import StorageService
@@ -24,6 +27,14 @@ from app.workers.tasks import process_meeting
 
 # Setup structured logger
 logger = logging.getLogger("app.api.v1.meetings")
+
+
+def create_summary_preview(summary: Optional[str], max_length: int = 200) -> Optional[str]:
+    """Helper to safely truncate meeting summaries for list previews."""
+    if not summary:
+        return None
+    return summary if len(summary) <= max_length else summary[:max_length] + "..."
+
 
 # Initialize FastAPI APIRouter
 router = APIRouter(prefix="/meetings", tags=["Meetings"])
@@ -235,4 +246,56 @@ async def get_meeting_risks(
     risks = meeting.risks
     logger.info("API: Returning risks. meeting_id=%s, count=%d", meeting_id, len(risks))
     return risks
+
+
+@router.get(
+    "",
+    response_model=MeetingListResponse,
+    status_code=status.HTTP_200_OK,
+    summary="List paginated meetings",
+    description="Retrieves a list of meetings sorted by created_at DESC with optional status and source filtering.",
+)
+async def list_meetings(
+    limit: int = Query(10, ge=1, le=100, description="Maximum number of records to return"),
+    offset: int = Query(0, ge=0, description="Offset index for pagination"),
+    status: Optional[MeetingStatus] = Query(None, description="Filter meetings by processing status"),
+    source: Optional[str] = Query(None, description="Filter meetings by source platform (case-insensitive)"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Endpoint handler to retrieve a paginated listing of meetings.
+    """
+    logger.info(
+        "API: Listing meetings. limit=%d, offset=%d, status=%s, source=%s",
+        limit,
+        offset,
+        status.value if status else "None",
+        source or "None"
+    )
+    total_count, items = await MeetingService.get_paginated_meetings(
+        db,
+        limit=limit,
+        offset=offset,
+        status=status,
+        source=source
+    )
+    
+    # Map ORM objects to MeetingListResponseItem DTOs cleanly
+    response_items = []
+    for item in items:
+        dto = MeetingListResponseItem(
+            id=item.id,
+            title=item.title,
+            status=item.status,
+            created_at=item.created_at,
+            meeting_date=item.meeting_date,
+            duration_minutes=item.duration_minutes,
+            source=item.source,
+            summary_preview=create_summary_preview(item.summary)
+        )
+        response_items.append(dto)
+
+    logger.info("API: Returning paginated meetings. total_count=%d, item_count=%d", total_count, len(response_items))
+    return MeetingListResponse(total_count=total_count, items=response_items)
+
 

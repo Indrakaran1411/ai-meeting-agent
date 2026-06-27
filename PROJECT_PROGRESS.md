@@ -143,6 +143,16 @@ The **AI Meeting Agent** is an enterprise-grade platform designed to ingest meet
   - Verified 404 responses return correctly when meeting UUID is missing or invalid.
   - Documented that `ChatSignal` is currently an independent entity pending downstream Slack/Teams integration.
 
+### T7.1: Meeting Listing API
+* **Objective**: Expose a paginated, sorted, and filterable list of meetings.
+* **Files**: `backend/app/schemas/meeting.py` (Modified), `backend/app/services/meeting_service.py` (Modified), `backend/app/api/v1/meetings.py` (Modified).
+* **Verification**:
+  - Verified pagination parameters (`limit` and `offset`) limit returning counts correctly.
+  - Verified default sort orders by newest `created_at` DESC.
+  - Verified optional filters (`status` and `source`) subset records correctly.
+  - Verified `summary_preview` property computes and returns a maximum of 200 characters followed by ellipsis.
+  - Verified `noload` optimizations execute cleanly, preventing additional selectin queries for transcripts and insights.
+
 ---
 
 ## Current Project Status

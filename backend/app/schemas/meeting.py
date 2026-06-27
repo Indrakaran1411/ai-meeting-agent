@@ -2,8 +2,8 @@
 
 import uuid
 from datetime import datetime, date
-from typing import Optional, List
-from pydantic import BaseModel, Field, ConfigDict
+from typing import Optional, List, Any
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 
 from app.models.enums import MeetingStatus, InsightStatus, RiskSeverity
 
@@ -114,4 +114,25 @@ class MeetingDetailResponse(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class MeetingListResponseItem(BaseModel):
+    """Schema for a single meeting in listing response."""
+    id: uuid.UUID
+    title: str
+    status: MeetingStatus
+    created_at: datetime
+    meeting_date: Optional[datetime] = None
+    duration_minutes: Optional[int] = None
+    source: Optional[str] = None
+    summary_preview: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MeetingListResponse(BaseModel):
+    """Schema wrapping a paginated list of meetings."""
+    total_count: int
+    items: List[MeetingListResponseItem]
+
 

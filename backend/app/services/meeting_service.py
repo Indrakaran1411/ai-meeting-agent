@@ -495,5 +495,61 @@ class MeetingService:
         logger.info("Service: Querying meeting details. meeting_id=%s", meeting_id)
         return await db.get(Meeting, meeting_id)
 
+    @staticmethod
+    async def get_paginated_meetings(
+        db: AsyncSession,
+        *,
+        limit: int,
+        offset: int,
+        status: Optional[MeetingStatus] = None,
+        source: Optional[str] = None
+    ) -> Tuple[int, list]:
+        """
+        Retrieves a paginated list of meetings matching optional filters, sorted by created_at DESC.
+        Uses noload() optimization to suppress eager relationship loading.
+        """
+        logger.info(
+            "Service: Querying paginated meetings list. limit=%d, offset=%d, status=%s, source=%s",
+            limit,
+            offset,
+            status.value if status else "None",
+            source or "None"
+        )
+        from sqlalchemy import select, func
+        from sqlalchemy.orm import noload
+
+        # 1. Build common filters
+        where_clauses = []
+        if status:
+            where_clauses.append(Meeting.status == status)
+        if source:
+            # Case-insensitive exact match
+            where_clauses.append(Meeting.source.ilike(source))
+
+        # 2. Count total matches
+        count_stmt = select(func.count(Meeting.id))
+        if where_clauses:
+            count_stmt = count_stmt.where(*where_clauses)
+        
+        count_result = await db.execute(count_stmt)
+        total_count = count_result.scalar_one()
+
+        # 3. Retrieve paginated records sorted by created_at DESC
+        data_stmt = select(Meeting).options(
+            noload(Meeting.transcripts),
+            noload(Meeting.action_items),
+            noload(Meeting.decisions),
+            noload(Meeting.risks)
+        ).order_by(Meeting.created_at.desc()).limit(limit).offset(offset)
+
+        if where_clauses:
+            data_stmt = data_stmt.where(*where_clauses)
+
+        data_result = await db.execute(data_stmt)
+        items = list(data_result.scalars().all())
+
+        return total_count, items
+
+
 
 
