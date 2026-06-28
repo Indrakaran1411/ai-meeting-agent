@@ -8,6 +8,7 @@ import {
 // Import tool definitions
 import * as listMeetings from "./tools/list_meetings.js";
 import * as searchTranscripts from "./tools/search_transcripts.js";
+import { closePool } from "./database.js";
 
 async function main() {
   console.error("Starting MCP server...");
@@ -66,10 +67,18 @@ async function main() {
   };
 
   // Graceful shutdown handling
-  process.on("SIGINT", async () => {
+  const shutdown = async () => {
     console.error("Shutting down MCP server...");
+    try {
+      await closePool();
+    } catch (err) {
+      console.error("Error closing database pool during shutdown:", err.message);
+    }
     process.exit(0);
-  });
+  };
+
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
 
   // Connect using standard input/output transport
   const transport = new StdioServerTransport();
