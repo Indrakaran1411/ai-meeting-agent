@@ -219,6 +219,15 @@ The **AI Meeting Agent** is an enterprise-grade platform designed to ingest meet
   - Verified request logging captures method, path, HTTP status, and latency in milliseconds.
   - Verified no sensitive payload data (keys, summaries, transcripts, headers) is logged.
 
+### T9.3: Health & Readiness Endpoints
+* **Objective**: Add lightweight HTTP endpoints to check service uptime (`GET /health`) and dependency readiness (`GET /ready` checking PostgreSQL and Redis).
+* **Files**: `backend/app/main.py` (Modified).
+* **Verification**:
+  - Verified `GET /health` returns HTTP 200 uptime indicators with no database hits.
+  - Verified `GET /ready` performs async ping checks on Redis and connection testing on PostgreSQL, returning HTTP 200 on success and HTTP 503 on dependencies failures.
+  - Verified error trace details are masked from responses and printed safely in logs.
+  - Verified `X-Request-ID` is correctly attached to responses and logging formats.
+
 ---
 
 ## Current Project Status

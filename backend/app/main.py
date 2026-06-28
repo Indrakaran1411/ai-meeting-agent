@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from app.api import api_v1_router
+from app.api import api_v1_router, infrastructure_router
 from app.core.exceptions import setup_exception_handlers
 from app.core.logging_config import setup_logging, CorrelationIdMiddleware
 
@@ -18,11 +18,13 @@ app.add_middleware(CorrelationIdMiddleware)
 # Setup centralized exception handling
 setup_exception_handlers(app)
 
+# Register endpoints (infrastructure endpoints registered at root level)
+app.include_router(infrastructure_router)
 app.include_router(api_v1_router)
 
 
 @app.get("/", tags=["Health"])
-async def health_check():
+async def health_check_root():
     return {"status": "ok", "service": "meeting-intelligence-agent"}
 
 
