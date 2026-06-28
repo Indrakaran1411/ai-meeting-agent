@@ -173,5 +173,13 @@ class MeetingStatisticsResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class DashboardResponse(BaseModel):
+    """Schema for consolidated dashboard data."""
+    statistics: MeetingStatisticsResponse
+    recent_meetings: List[MeetingListResponseItem]
+    recent_action_items: List[ActionItemResponse]
+
+
+
 
 

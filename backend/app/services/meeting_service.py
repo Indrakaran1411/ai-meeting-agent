@@ -802,6 +802,30 @@ class MeetingService:
             total_risks=total_risks
         )
 
+    @staticmethod
+    async def get_draft_action_items(
+        db: AsyncSession,
+        *,
+        limit: int = 5
+    ) -> list:
+        """
+        Retrieves recent action items in DRAFT status, sorted by created_at DESC.
+        """
+        logger.info("Service: Querying recent draft action items. limit=%d", limit)
+        from sqlalchemy import select
+        from app.models.action_item import ActionItem
+        from app.models.enums import InsightStatus
+
+        stmt = (
+            select(ActionItem)
+            .where(ActionItem.status == InsightStatus.DRAFT)
+            .order_by(ActionItem.created_at.desc())
+            .limit(limit)
+        )
+        res = await db.execute(stmt)
+        return list(res.scalars().all())
+
+
 
 
 

@@ -23,7 +23,8 @@ from app.schemas.meeting import (
     ActionItemUpdateRequest,
     DecisionUpdateRequest,
     RiskUpdateRequest,
-    MeetingStatisticsResponse
+    MeetingStatisticsResponse,
+    DashboardResponse
 )
 from app.services.meeting_service import MeetingService
 from app.services.storage_service import StorageService
@@ -38,6 +39,20 @@ def create_summary_preview(summary: Optional[str], max_length: int = 200) -> Opt
     if not summary:
         return None
     return summary if len(summary) <= max_length else summary[:max_length] + "..."
+
+
+def map_to_list_item(item) -> MeetingListResponseItem:
+    """Helper to map a Meeting ORM object to a MeetingListResponseItem DTO."""
+    return MeetingListResponseItem(
+        id=item.id,
+        title=item.title,
+        status=item.status,
+        created_at=item.created_at,
+        meeting_date=item.meeting_date,
+        duration_minutes=item.duration_minutes,
+        source=item.source,
+        summary_preview=create_summary_preview(item.summary)
+    )
 
 
 # Initialize FastAPI APIRouter
@@ -122,6 +137,38 @@ async def upload_meeting(
 
 
 @router.get(
+    "/dashboard",
+    response_model=DashboardResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get consolidated dashboard data",
+    description="Returns aggregate statistics, recent meetings (latest 5), and recent draft action items (latest 5).",
+    tags=["Dashboard"],
+)
+async def get_dashboard(
+    db: AsyncSession = Depends(get_db),
+):
+    logger.info("API: GET dashboard requested.")
+    # 1. Fetch statistics
+    stats = await MeetingService.get_meeting_statistics(db)
+
+    # 2. Fetch recent meetings (latest 5)
+    _, meetings = await MeetingService.get_paginated_meetings(db, limit=5, offset=0)
+
+    # 3. Fetch recent action items in DRAFT status
+    draft_action_items = await MeetingService.get_draft_action_items(db, limit=5)
+
+    # 4. Map ORM meetings to list response DTOs
+    recent_meetings_mapped = [map_to_list_item(item) for item in meetings]
+
+    logger.info("API: Dashboard data compiled successfully.")
+    return DashboardResponse(
+        statistics=stats,
+        recent_meetings=recent_meetings_mapped,
+        recent_action_items=draft_action_items
+    )
+
+
+@router.get(
     "/meetings/stats",
     response_model=MeetingStatisticsResponse,
     status_code=status.HTTP_200_OK,
@@ -169,19 +216,7 @@ async def search_meetings(
     )
 
     # Map ORM objects to MeetingListResponseItem DTOs cleanly
-    response_items = []
-    for item in items:
-        dto = MeetingListResponseItem(
-            id=item.id,
-            title=item.title,
-            status=item.status,
-            created_at=item.created_at,
-            meeting_date=item.meeting_date,
-            duration_minutes=item.duration_minutes,
-            source=item.source,
-            summary_preview=create_summary_preview(item.summary)
-        )
-        response_items.append(dto)
+    response_items = [map_to_list_item(item) for item in items]
 
     logger.info(
         "API: Search completed. q=%s, status=%s, source=%s, limit=%d, offset=%d, total_count=%d",
@@ -359,19 +394,7 @@ async def list_meetings(
     )
     
     # Map ORM objects to MeetingListResponseItem DTOs cleanly
-    response_items = []
-    for item in items:
-        dto = MeetingListResponseItem(
-            id=item.id,
-            title=item.title,
-            status=item.status,
-            created_at=item.created_at,
-            meeting_date=item.meeting_date,
-            duration_minutes=item.duration_minutes,
-            source=item.source,
-            summary_preview=create_summary_preview(item.summary)
-        )
-        response_items.append(dto)
+    response_items = [map_to_list_item(item) for item in items]
 
     logger.info("API: Returning paginated meetings. total_count=%d, item_count=%d", total_count, len(response_items))
     return MeetingListResponse(total_count=total_count, items=response_items)

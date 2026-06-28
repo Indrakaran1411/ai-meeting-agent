@@ -192,6 +192,15 @@ The **AI Meeting Agent** is an enterprise-grade platform designed to ingest meet
   - Verified string Enum subclassing behavior is properly normalized to avoid double-counting.
   - Verified statistics match raw PostgreSQL queries exactly.
 
+### T8.3: Meeting Dashboard API
+* **Objective**: Expose a consolidated dashboard API (`GET /api/v1/dashboard`) returning statistics, 5 most recent meetings, and 5 most recent draft action items.
+* **Files**: `backend/app/schemas/meeting.py` (Modified), `backend/app/services/meeting_service.py` (Modified), `backend/app/api/v1/meetings.py` (Modified).
+* **Verification**:
+  - Verified `DashboardResponse` contains nested statistics matching the stats endpoint.
+  - Verified recent meetings list returns the latest 5 items ordered by `created_at` DESC.
+  - Verified only action items with `DRAFT` status are retrieved.
+  - Verified `noload` optimizations carry over correctly to avoid N+1 queries.
+
 ---
 
 ## Current Project Status
