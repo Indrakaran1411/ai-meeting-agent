@@ -128,3 +128,29 @@ class MeetingSyncPayload(BaseModel):
         default="1.0",
         description="Version identifier of the sync schema contract"
     )
+
+
+class WebhookDispatchResult(BaseModel):
+    """Schema representing the outcome result of an outbound webhook dispatch execution."""
+    model_config = ConfigDict(frozen=True)
+
+    success: bool = Field(
+        ...,
+        description="Indicates whether the dispatch POST completed successfully with a 2xx response status",
+        example=True
+    )
+    status_code: Optional[int] = Field(
+        default=None,
+        description="HTTP response status code returned by the downstream webhook endpoint",
+        example=200
+    )
+    message: str = Field(
+        ...,
+        description="Detailed contextual message describing the dispatch outcome or failure details",
+        example="Payload dispatched successfully"
+    )
+    dispatched_at: datetime = Field(
+        ...,
+        description="Timezone-aware UTC timestamp when the dispatch attempt completed",
+        example="2026-06-28T12:00:05Z"
+    )

@@ -106,6 +106,16 @@ class Settings(BaseSettings):
         description="Max output tokens for Gemini generation"
     )
 
+    # Downstream PM Webhook configurations
+    PM_WEBHOOK_URL: Optional[str] = Field(
+        default=None,
+        description="Target API webhook URL for downstream PM Agent synchronization"
+    )
+    PM_WEBHOOK_TIMEOUT: int = Field(
+        default=10,
+        description="Timeout threshold (in seconds) for webhook dispatch requests"
+    )
+
 
 
     @property

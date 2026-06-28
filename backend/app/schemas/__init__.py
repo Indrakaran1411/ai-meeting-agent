@@ -5,4 +5,5 @@ from .sync import (
     DecisionSyncPayload,
     RiskSyncPayload,
     MeetingSyncPayload,
+    WebhookDispatchResult,
 )
