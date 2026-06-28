@@ -261,6 +261,19 @@ The **AI Meeting Agent** is an enterprise-grade platform designed to ingest meet
   - Handled network edge cases, including timeouts, connection failure handshakes, and invalid status codes, mapping errors to structured results instead of exposing stack traces.
   - Verified webhook payload dispatching using a local Python HTTP mock server spawned in a background daemon thread inside the Docker backend container.
 
+### T10.5: Meeting Sync API Endpoint
+* **Objective**: Expose `POST /api/v1/meetings/{meeting_id}/sync` to orchestrate the full meeting sync pipeline from retrieval to webhook dispatch.
+* **Files**: `backend/app/api/v1/meetings.py` (Modified), `backend/app/schemas/meeting.py` (Modified).
+* **Design**: Router retrieves the meeting via `MeetingService.get_meeting_by_id()` (all insight relationships are selectin-eager-loaded automatically by the ORM), delegates payload construction to `SyncService.build_meeting_sync_payload()`, and dispatches via `WebhookService.send_meeting_payload()`. Returns **HTTP 200** on success and **HTTP 503** on any dispatch failure (not configured, timeout, connection error, non-2xx receiver). Status code is set via FastAPI's injectable `Response` object — no logic duplicated from `WebhookService`. Response body is always `MeetingSyncResponse`.
+* **OpenAPI documented status codes**: `200`, `404`, `422`, `500`, `503`.
+* **Verification**:
+  - Scenario 1: Non-existent meeting → `HTTP 404` with structured error body.
+  - Scenario 2: `PM_WEBHOOK_URL` not configured → `HTTP 503`, `success=false`, `status_code=null`.
+  - Scenario 3: Successful dispatch to mock server → `HTTP 200`, `success=true`, `status_code=200`.
+  - Scenario 4: Downstream mock returning `500` → `HTTP 503`, `success=false`, `status_code=500`.
+  - Scenario 5: Timeout (1 s threshold, 4 s mock delay) → `HTTP 503`, `success=false`, `status_code=null`.
+  - Live curl confirmed `X-Request-ID` headers, `/docs`, `/openapi.json`, `/health`, `/ready`, `/api/v1/meetings/stats` all `HTTP 200`.
+
 ---
 
 ## Current Project Status

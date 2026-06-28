@@ -4,7 +4,7 @@ import logging
 import os
 from datetime import datetime
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Form, File, UploadFile, Query
+from fastapi import APIRouter, Depends, HTTPException, Response, status, Form, File, UploadFile, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import uuid
@@ -26,10 +26,13 @@ from app.schemas.meeting import (
     MeetingStatisticsResponse,
     DashboardResponse,
     ErrorResponse,
+    MeetingSyncResponse,
     COMMON_ERRORS
 )
 from app.services.meeting_service import MeetingService
 from app.services.storage_service import StorageService
+from app.services.sync_service import SyncService
+from app.services.webhook_service import WebhookService
 from app.workers.tasks import process_meeting
 
 # Setup structured logger
@@ -605,5 +608,122 @@ async def delete_risk(
     return
 
 
+@router.post(
+    "/meetings/{meeting_id}/sync",
+    response_model=MeetingSyncResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Sync a meeting to the PM webhook",
+    description=(
+        "Retrieves the specified meeting along with all its action items, decisions, and risks, "
+        "builds a structured `MeetingSyncPayload`, and dispatches it to the configured PM webhook. "
+        "Returns **HTTP 200** when the downstream receiver accepted the payload. "
+        "Returns **HTTP 503** if the webhook is not configured, times out, encounters a connection "
+        "error, or the receiver returns a non-2xx status. In all cases the response body is a "
+        "`MeetingSyncResponse` — inspect `success`, `status_code`, and `message` for detail."
+    ),
+    response_description="Sync accepted by downstream webhook receiver",
+    responses={
+        200: {"model": MeetingSyncResponse, "description": "Payload accepted by downstream webhook receiver"},
+        404: {"model": ErrorResponse, "description": "Meeting not found"},
+        422: {"model": ErrorResponse, "description": "Unprocessable Entity — path parameter validation failed"},
+        500: {"model": ErrorResponse, "description": "Internal Server Error — payload build failed unexpectedly"},
+        503: {
+            "model": MeetingSyncResponse,
+            "description": (
+                "Service Unavailable — PM_WEBHOOK_URL is not configured, the webhook timed out, "
+                "a connection error occurred, or the receiver returned a non-2xx status"
+            )
+        },
+    },
+    tags=["Sync"],
+)
+async def sync_meeting(
+    meeting_id: uuid.UUID,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    POST /api/v1/meetings/{meeting_id}/sync
 
+    Orchestrates the full sync pipeline:
+      1. Retrieve meeting (404 if missing).
+      2. Load action items, decisions, and risks via eager-loaded selectin relationships.
+      3. Build an immutable MeetingSyncPayload via SyncService.
+      4. Dispatch the payload to the configured PM webhook via WebhookService.
+      5. Return a MeetingSyncResponse with the dispatch outcome.
+    """
+    logger.info(
+        "API: Sync requested. meeting_id=%s",
+        meeting_id
+    )
 
+    # Step 1 — Retrieve meeting (relationships are selectin-loaded automatically)
+    meeting = await MeetingService.get_meeting_by_id(db, meeting_id)
+    if not meeting:
+        logger.warning("API: Meeting not found for sync. meeting_id=%s", meeting_id)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Meeting with ID {meeting_id} not found."
+        )
+
+    logger.info(
+        "API: Meeting retrieved for sync. meeting_id=%s, title=%r, status=%s, "
+        "action_items=%d, decisions=%d, risks=%d",
+        meeting_id,
+        meeting.title,
+        meeting.status.value,
+        len(meeting.action_items),
+        len(meeting.decisions),
+        len(meeting.risks),
+    )
+
+    # Step 2 — Build outbound payload via SyncService (pure mapping, no side effects)
+    try:
+        sync_payload = SyncService.build_meeting_sync_payload(
+            meeting=meeting,
+            action_items=list(meeting.action_items),
+            decisions=list(meeting.decisions),
+            risks=list(meeting.risks),
+        )
+    except Exception:
+        logger.exception(
+            "API: SyncService failed to build payload. meeting_id=%s", meeting_id
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to build sync payload. Check server logs for details."
+        )
+
+    logger.info(
+        "API: Sync payload built successfully. meeting_id=%s, schema_version=%s",
+        meeting_id,
+        sync_payload.schema_version,
+    )
+
+    # Step 3 — Dispatch to PM webhook via WebhookService
+    dispatch_result = await WebhookService.send_meeting_payload(sync_payload)
+
+    logger.info(
+        "API: Webhook dispatch completed. meeting_id=%s, success=%s, status_code=%s, message=%r",
+        meeting_id,
+        dispatch_result.success,
+        dispatch_result.status_code,
+        dispatch_result.message,
+    )
+
+    # Step 4 — Set HTTP status based on dispatch outcome; body is always MeetingSyncResponse
+    if not dispatch_result.success:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        logger.warning(
+            "API: Sync dispatch failed — returning HTTP 503. meeting_id=%s, message=%r",
+            meeting_id,
+            dispatch_result.message,
+        )
+
+    return MeetingSyncResponse(
+        success=dispatch_result.success,
+        meeting_id=meeting_id,
+        status_code=dispatch_result.status_code,
+        message=dispatch_result.message,
+        dispatched_at=dispatch_result.dispatched_at,
+    )

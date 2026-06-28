@@ -535,3 +535,34 @@ class ReadyResponse(BaseModel):
     database: str = Field(..., description="Uptime status of PostgreSQL dependency", example="ok")
     redis: str = Field(..., description="Uptime status of Redis dependency", example="ok")
 
+
+class MeetingSyncResponse(BaseModel):
+    """Schema representing the outcome of a meeting synchronization request."""
+    model_config = ConfigDict(frozen=True)
+
+    success: bool = Field(
+        ...,
+        description="Indicates whether the sync completed successfully",
+        example=True
+    )
+    meeting_id: uuid.UUID = Field(
+        ...,
+        description="Unique identifier of the meeting synced",
+        example="e64dee57-8d8d-4901-b107-9fc864d54c95"
+    )
+    status_code: Optional[int] = Field(
+        default=None,
+        description="HTTP status code returned by the downstream webhook endpoint",
+        example=200
+    )
+    message: str = Field(
+        ...,
+        description="Contextual message describing the sync status",
+        example="Payload successfully accepted by downstream webhook receiver"
+    )
+    dispatched_at: Optional[datetime] = Field(
+        default=None,
+        description="Timezone-aware UTC timestamp when the sync completed",
+        example="2026-06-28T12:00:05Z"
+    )
+
