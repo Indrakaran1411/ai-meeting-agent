@@ -353,6 +353,24 @@ The **AI Meeting Agent** is an enterprise-grade platform designed to ingest meet
   - Verified input constraints: checked that invalid limits (e.g. `101`), empty queries, and missing parameters reject early returning structured error objects.
   - Verified diagnostics write strictly to `stderr` with zero stdout pollution.
 
+### T11.5: End-to-End MCP Server Integration & Verification
+* **Objective**: Integrate and verify the complete Model Context Protocol (MCP) server workflow, verifying tool schemas registration and request routing.
+* **Files**:
+  - `mcp-server/server.js` (Verified - registers handlers and dispatches calls)
+  - `mcp-server/tools/list_meetings.js` (Verified - integrates with database and handles listings)
+  - `mcp-server/tools/search_transcripts.js` (Verified - integrates with database and handles search queries)
+* **Design**:
+  - Exposes `list_meetings` and `search_transcripts` tools over JSON-RPC.
+  - Leverages standard input/output transport for robust client-server communications.
+  - Ensures clean separation of stderr diagnostics from stdout JSON-RPC protocol transport payloads.
+* **Verification**:
+  - Created automated test harness connecting to the server using the official MCP SDK Client over stdio transport.
+  - Verified `tools/list` returns both registered tool schemas with complete parameter definitions.
+  - Verified `list_meetings` successfully queries PostgreSQL and returns paginated list of meetings.
+  - Verified `search_transcripts` case-insensitive query executes correctly and returns formatted matches.
+  - Verified invalid parameters are rejected with appropriate error blocks (validation constraints).
+  - Confirmed 100% clean stdout and zero protocol pollution.
+
 ---
 
 ## Current Project Status
