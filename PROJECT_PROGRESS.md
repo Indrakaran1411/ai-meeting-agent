@@ -321,6 +321,17 @@ The **AI Meeting Agent** is an enterprise-grade platform designed to ingest meet
   - Verified authentication failures and host network timeouts fail fast (5 seconds connection timeout configured).
   - Verified zero stdout pollution (diagnostics routed to `stderr` only).
 
+### T11.3: MCP Tool Registration
+* **Objective**: Define and register MCP tools (`list_meetings` and `search_transcripts`) with input schema validations, delegating execution logic to individual tool modules.
+* **Files**:
+  - `mcp-server/tools/list_meetings.js` (Created - exports metadata, schema, and stub execution handler)
+  - `mcp-server/tools/search_transcripts.js` (Created - exports metadata, schema, and stub execution handler)
+  - `mcp-server/server.js` (Modified - imports tools, registers handlers with SDK's schemas, and routes execution)
+* **Verification**:
+  - Querying `tools/list` JSON-RPC request over stdio correctly returns the tool schemas and properties on `stdout` without pollution.
+  - Querying `tools/call` for `list_meetings` successfully routes the request and executes the stub handler, returning the metadata as expected.
+  - Checked logs and confirmed all diagnostics are cleanly directed to `stderr` only.
+
 ---
 
 ## Current Project Status
