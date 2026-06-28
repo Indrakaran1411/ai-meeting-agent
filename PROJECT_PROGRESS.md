@@ -210,6 +210,15 @@ The **AI Meeting Agent** is an enterprise-grade platform designed to ingest meet
   - Verified Pydantic validation errors (422) return structured detail structures within the custom error object.
   - Verified generic unhandled exceptions (500) hide stack traces and database queries from clients while logging tracebacks to backend logs.
 
+### T9.2: Structured Logging & Request Correlation
+* **Objective**: Configure centralized standard library logging and correlation ID middleware to track request lifecycle with unique Request IDs.
+* **Files**: `backend/app/core/logging_config.py` (Created), `backend/app/main.py` (Modified).
+* **Verification**:
+  - Verified middleware attaches UUIDv4 or client-supplied `X-Request-ID` headers to all responses.
+  - Verified logs format correctly: `[timestamp] LEVEL [request_id] logger: message` using `ContextVar` propagation.
+  - Verified request logging captures method, path, HTTP status, and latency in milliseconds.
+  - Verified no sensitive payload data (keys, summaries, transcripts, headers) is logged.
+
 ---
 
 ## Current Project Status
