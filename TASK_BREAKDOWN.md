@@ -607,35 +607,35 @@ This document contains the atomic task breakdown for building the **Meeting & Ch
 *   **Manual testing**: Run select query script and verify results.
 *   **Common mistakes**: Missing statement/connection timeout configurations.
 
-### T11.3: MCP Tool Registration
+### T11.3: MCP Tool Registration & list_meetings Tool Implementation
 *   **Task ID**: `T11.3`
-*   **Objective**: Register MCP tools (`list_meetings` and `search_transcripts`) with input schema validations.
-*   **Files or assets**: `mcp-server/server.js`, `mcp-server/tools/` metadata stubs.
-*   **Inputs**: Input schemas, metadata fields.
-*   **Outputs**: Registered tool definitions.
+*   **Objective**: Register MCP tools and implement database execution logic for list_meetings.
+*   **Files or assets**: `mcp-server/server.js`, `mcp-server/tools/list_meetings.js`.
+*   **Inputs**: Input schemas, limit, offset, status arguments.
+*   **Outputs**: Registered tool definitions and paginated list of meetings.
 *   **Dependencies**: `T11.2`.
-*   **Acceptance criteria**: Exposes tools correctly to client requests without stdout pollution.
-*   **Manual testing**: Query `tools/list` over stdio and inspect returned JSON-RPC body.
-*   **Common mistakes**: Mismatch between SDK request handlers and input formats.
+*   **Acceptance criteria**: Returns meeting list in standard MCP format with correct inputs validation and query casting.
+*   **Manual testing**: Verify list_meetings executes successfully via inspector.
+*   **Common mistakes**: Returns data mismatch in schema or non-sargable queries.
 
-### T11.4: list_meetings Tool Implementation
+### T11.4: search_transcripts Tool Implementation
 *   **Task ID**: `T11.4`
-*   **Objective**: Implement database execution logic for list_meetings tool.
-*   **Files or assets**: `mcp-server/tools/list_meetings.js`
-*   **Inputs**: limit, offset, status arguments.
-*   **Outputs**: Paginated list of meetings.
-*   **Dependencies**: `T11.3`.
-*   **Acceptance criteria**: Correctly executes parameterized SQL queries and validates inputs.
-*   **Manual testing**: Query tool via inspector and verify JSON result.
-*   **Common mistakes**: Using non-sargable string concatenation queries.
-
-### T11.5: search_transcripts Tool Implementation
-*   **Task ID**: `T11.5`
 *   **Objective**: Implement database execution logic for search_transcripts tool.
-*   **Files or assets**: `mcp-server/tools/search_transcripts.js`
+*   **Files or assets**: `mcp-server/tools/search_transcripts.js`.
 *   **Inputs**: query, limit arguments.
-*   **Outputs**: Search results matching keyword.
-*   **Dependencies**: `T11.3`.
-*   **Acceptance criteria**: Performs case-insensitive search on transcript database content.
-*   **Manual testing**: Query term via inspector and confirm relevancy and speaker context.
-*   **Common mistakes**: Unvalidated parameters or unindexed search columns.
+*   **Outputs**: Cleanly formatted case-insensitive transcript search results.
+*   **Dependencies**: `T11.2`.
+*   **Acceptance criteria**: Performs parameterized case-insensitive ILIKE search on transcripts database table and formats results for LLMs.
+*   **Manual testing**: Query term via inspector and verify search results formats.
+*   **Common mistakes**: Parameter validation failures or SQL injection vulnerabilities.
+
+### T11.5: Verify tool executions
+*   **Task ID**: `T11.5`
+*   **Objective**: Verify tool executions using MCP inspector CLI toolsets.
+*   **Files or assets**: Configuration files.
+*   **Inputs**: CLI console commands.
+*   **Outputs**: Run tests log printout.
+*   **Dependencies**: `T11.3`, `T11.4`.
+*   **Acceptance criteria**: Inspector runs successfully and executes target tools.
+*   **Manual testing**: Start server and run `npx @modelcontextprotocol/inspector node server.js`.
+*   **Common mistakes**: Port conflicts.

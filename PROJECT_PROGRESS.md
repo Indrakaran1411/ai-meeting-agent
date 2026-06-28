@@ -296,7 +296,6 @@ The **AI Meeting Agent** is an enterprise-grade platform designed to ingest meet
   - Verified modifications to content trigger new dispatches due to distinct SHA-256 hashes.
   - Verified transport edge cases (HTTP 500 downstream, timeout events) are correctly audited as `FAILED` with custom response messages.
   - Verified composite indexes (`ix_sync_logs_idempotency` on `[meeting_id, payload_hash, status]`) and individual key constraints.
-
 ### T11.1: Initialize MCP Workspace
 * **Objective**: Scaffold a Node.js workspace configured to build the Model Context Protocol (MCP) server.
 * **Files**:
@@ -321,21 +320,11 @@ The **AI Meeting Agent** is an enterprise-grade platform designed to ingest meet
   - Verified authentication failures and host network timeouts fail fast (5 seconds connection timeout configured).
   - Verified zero stdout pollution (diagnostics routed to `stderr` only).
 
-### T11.3: MCP Tool Registration
-* **Objective**: Define and register MCP tools (`list_meetings` and `search_transcripts`) with input schema validations, delegating execution logic to individual tool modules.
+### T11.3: MCP Tool Registration & list_meetings Tool Implementation
+* **Objective**: Define and register MCP tools with input schema validations, delegating execution logic to individual tool modules, and implement the paginated/filtered list_meetings DB query.
 * **Files**:
-  - `mcp-server/tools/list_meetings.js` (Created - exports metadata, schema, and stub execution handler)
-  - `mcp-server/tools/search_transcripts.js` (Created - exports metadata, schema, and stub execution handler)
+  - `mcp-server/tools/list_meetings.js` (Created/Modified - added database query, input validation, and parameter parsing logic)
   - `mcp-server/server.js` (Modified - imports tools, registers handlers with SDK's schemas, and routes execution)
-* **Verification**:
-  - Querying `tools/list` JSON-RPC request over stdio correctly returns the tool schemas and properties on `stdout` without pollution.
-  - Querying `tools/call` for `list_meetings` successfully routes the request and executes the stub handler, returning the metadata as expected.
-  - Checked logs and confirmed all diagnostics are cleanly directed to `stderr` only.
-
-### T11.4: list_meetings Tool Implementation
-* **Objective**: Query PostgreSQL database using the shared connection pool from `database.js` to return a paginated and filtered list of meetings.
-* **Files**:
-  - `mcp-server/tools/list_meetings.js` (Modified - added database query, input validation, and parameter parsing logic)
 * **Design**:
   - Validates `limit` and `offset` ranges. Validates optional lowercase `status` filter against the allowed enum set and maps it to uppercase strings to match PostgreSQL DB enum definitions.
   - Queries `meetings` using parameterized SQL with appropriate casting (`status = $1::meeting_status`) to preserve index usage (sargability).
@@ -344,8 +333,25 @@ The **AI Meeting Agent** is an enterprise-grade platform designed to ingest meet
   - Successfully connected to the container database and executed list query.
   - Verified `limit` and `offset` operate correctly.
   - Verified `status` filters work as expected.
-  - Verified invalid limits (e.g., `0`) and status inputs (e.g., `'invalid_status'`) fail fast with validation errors.
+  - Verified invalid limits (e.g. `0`) and status inputs (e.g. `'invalid_status'`) fail fast with validation errors.
+  - Querying `tools/list` JSON-RPC request over stdio correctly returns the tool schemas and properties on `stdout` without pollution.
   - Diagnostics are written strictly to `stderr` with zero stdout pollution.
+
+### T11.4: search_transcripts Tool Implementation
+* **Objective**: Search transcript segments using case-insensitive keyword query matching, returning speaker, content, timestamps, and meeting titles.
+* **Files**:
+  - `mcp-server/tools/search_transcripts.js` (Modified - implemented input validation, case-insensitive ILIKE query, and clean LLM formatting)
+* **Design**:
+  - Validates that `query` is required, non-empty, and trims whitespace.
+  - Enforces `limit` defaults to 10 and max 100.
+  - Queries `transcripts` table joined with `meetings` using a case-insensitive, parameterized `ILIKE` pattern search on `content` to prevent SQL injection.
+  - Formats results into a clean text block layout structured specifically for LLM consumption: `Meeting: ... / Speaker: ... / Timestamp: ... / Transcript: ...`.
+  - Handles empty search results gracefully by returning a clean user-facing status message.
+* **Verification**:
+  - Executed search tests for existing database keywords (e.g. `"database"` and `"migration"`) and confirmed correct segment text and timestamps match.
+  - Verified empty search results handling for nonexistent keywords (e.g. `"nonexistent"`).
+  - Verified input constraints: checked that invalid limits (e.g. `101`), empty queries, and missing parameters reject early returning structured error objects.
+  - Verified diagnostics write strictly to `stderr` with zero stdout pollution.
 
 ---
 
