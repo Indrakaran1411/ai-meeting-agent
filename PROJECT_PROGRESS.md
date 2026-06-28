@@ -201,6 +201,15 @@ The **AI Meeting Agent** is an enterprise-grade platform designed to ingest meet
   - Verified only action items with `DRAFT` status are retrieved.
   - Verified `noload` optimizations carry over correctly to avoid N+1 queries.
 
+### T9.1: Global API Error Handling & Exception Middleware
+* **Objective**: Centralize global exception handlers for `HTTPException`, `RequestValidationError`, `SQLAlchemyError`, and generic `Exception` to return unified JSON error envelopes.
+* **Files**: `backend/app/core/exceptions.py` (Created), `backend/app/main.py` (Modified).
+* **Verification**:
+  - Verified 404 path validation errors return the custom nested error envelope.
+  - Verified Starlette's `HTTPException` captures routing issues like 405 Method Not Allowed and unknown path 404s.
+  - Verified Pydantic validation errors (422) return structured detail structures within the custom error object.
+  - Verified generic unhandled exceptions (500) hide stack traces and database queries from clients while logging tracebacks to backend logs.
+
 ---
 
 ## Current Project Status
