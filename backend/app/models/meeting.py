@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from app.models.action_item import ActionItem
     from app.models.decision import Decision
     from app.models.risk import Risk
+    from app.models.sync_log import SyncLog
     from app.models.transcript import Transcript
 
 
@@ -73,6 +74,9 @@ class Meeting(Base):
     )
     risks: Mapped[list["Risk"]] = relationship(
         back_populates="meeting", cascade="all, delete-orphan", lazy="selectin"
+    )
+    sync_logs: Mapped[list["SyncLog"]] = relationship(
+        back_populates="meeting", cascade="all, delete-orphan", lazy="select"
     )
 
     __table_args__ = (

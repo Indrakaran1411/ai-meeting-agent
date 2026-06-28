@@ -32,7 +32,10 @@ from app.schemas.meeting import (
 from app.services.meeting_service import MeetingService
 from app.services.storage_service import StorageService
 from app.services.sync_service import SyncService
+from app.services.sync_log_service import SyncLogService
 from app.services.webhook_service import WebhookService
+from app.core.logging_config import request_id_var
+from app.core.config import settings
 from app.workers.tasks import process_meeting
 
 # Setup structured logger
@@ -614,19 +617,19 @@ async def delete_risk(
     status_code=status.HTTP_200_OK,
     summary="Sync a meeting to the PM webhook",
     description=(
-        "Retrieves the specified meeting along with all its action items, decisions, and risks, "
+        "Retrieves the specified meeting with all its action items, decisions, and risks, "
         "builds a structured `MeetingSyncPayload`, and dispatches it to the configured PM webhook. "
-        "Returns **HTTP 200** when the downstream receiver accepted the payload. "
-        "Returns **HTTP 503** if the webhook is not configured, times out, encounters a connection "
-        "error, or the receiver returns a non-2xx status. In all cases the response body is a "
-        "`MeetingSyncResponse` — inspect `success`, `status_code`, and `message` for detail."
+        "Implements idempotency: if an identical payload has already been successfully dispatched "
+        "(same `meeting_id` + `payload_hash`), the webhook is NOT called again and `skipped=true` "
+        "is returned. Every attempt (including duplicates) is recorded in the `sync_logs` audit table. "
+        "Returns **HTTP 200** on success or skip. Returns **HTTP 503** on dispatch failure."
     ),
-    response_description="Sync accepted by downstream webhook receiver",
+    response_description="Sync outcome — inspect `success`, `skipped`, and `sync_log_id` for detail",
     responses={
-        200: {"model": MeetingSyncResponse, "description": "Payload accepted by downstream webhook receiver"},
+        200: {"model": MeetingSyncResponse, "description": "Payload accepted or already synchronized (skipped)"},
         404: {"model": ErrorResponse, "description": "Meeting not found"},
         422: {"model": ErrorResponse, "description": "Unprocessable Entity — path parameter validation failed"},
-        500: {"model": ErrorResponse, "description": "Internal Server Error — payload build failed unexpectedly"},
+        500: {"model": ErrorResponse, "description": "Internal Server Error — payload build or DB write failed"},
         503: {
             "model": MeetingSyncResponse,
             "description": (
@@ -645,29 +648,35 @@ async def sync_meeting(
     """
     POST /api/v1/meetings/{meeting_id}/sync
 
-    Orchestrates the full sync pipeline:
+    Full T10.6 sync pipeline with audit log and idempotency:
       1. Retrieve meeting (404 if missing).
-      2. Load action items, decisions, and risks via eager-loaded selectin relationships.
-      3. Build an immutable MeetingSyncPayload via SyncService.
-      4. Dispatch the payload to the configured PM webhook via WebhookService.
-      5. Return a MeetingSyncResponse with the dispatch outcome.
+      2. Build MeetingSyncPayload via SyncService (pure, no I/O).
+      3. Compute deterministic SHA-256 payload hash (excludes generated_at).
+      4. Idempotency check: if a SUCCESS SyncLog exists with same meeting_id +
+         payload_hash, return immediately with skipped=True — NO webhook call.
+      5. Insert PENDING SyncLog audit record.
+      6. Dispatch to PM webhook via WebhookService.
+      7. Update SyncLog to SUCCESS or FAILED.
+      8. Return MeetingSyncResponse with sync_log_id, skipped, and outcome.
     """
+    request_id = request_id_var.get()
     logger.info(
-        "API: Sync requested. meeting_id=%s",
-        meeting_id
+        "API: Sync requested. meeting_id=%s, request_id=%s",
+        meeting_id,
+        request_id,
     )
 
-    # Step 1 — Retrieve meeting (relationships are selectin-loaded automatically)
+    # ── Step 1: Retrieve meeting ──────────────────────────────────────────────
     meeting = await MeetingService.get_meeting_by_id(db, meeting_id)
     if not meeting:
         logger.warning("API: Meeting not found for sync. meeting_id=%s", meeting_id)
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Meeting with ID {meeting_id} not found."
+            detail=f"Meeting with ID {meeting_id} not found.",
         )
 
     logger.info(
-        "API: Meeting retrieved for sync. meeting_id=%s, title=%r, status=%s, "
+        "API: Meeting retrieved. meeting_id=%s, title=%r, status=%s, "
         "action_items=%d, decisions=%d, risks=%d",
         meeting_id,
         meeting.title,
@@ -677,7 +686,7 @@ async def sync_meeting(
         len(meeting.risks),
     )
 
-    # Step 2 — Build outbound payload via SyncService (pure mapping, no side effects)
+    # ── Step 2: Build payload ─────────────────────────────────────────────────
     try:
         sync_payload = SyncService.build_meeting_sync_payload(
             meeting=meeting,
@@ -686,37 +695,96 @@ async def sync_meeting(
             risks=list(meeting.risks),
         )
     except Exception:
+        logger.exception("API: SyncService failed to build payload. meeting_id=%s", meeting_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to build sync payload. Check server logs for details.",
+        )
+
+    # ── Step 3: Compute payload hash ──────────────────────────────────────────
+    payload_hash = SyncLogService.compute_payload_hash(sync_payload)
+    logger.info(
+        "API: Payload hash computed. meeting_id=%s, payload_hash=%s, request_id=%s",
+        meeting_id,
+        payload_hash,
+        request_id,
+    )
+
+    # ── Step 4: Idempotency check ─────────────────────────────────────────────
+    existing_log = await SyncLogService.find_successful_sync(db, meeting_id, payload_hash)
+    if existing_log is not None:
+        logger.info(
+            "API: Duplicate payload detected — skipping dispatch. "
+            "meeting_id=%s, payload_hash=%s, existing_sync_log_id=%s",
+            meeting_id,
+            payload_hash,
+            existing_log.id,
+        )
+        return MeetingSyncResponse(
+            success=True,
+            meeting_id=meeting_id,
+            status_code=None,
+            message="Payload already synchronized.",
+            dispatched_at=existing_log.dispatched_at,
+            sync_log_id=existing_log.id,
+            skipped=True,
+            reason="Payload already synchronized.",
+        )
+
+    # ── Step 5: Insert PENDING audit record ───────────────────────────────────
+    try:
+        sync_log = await SyncLogService.create_pending(
+            db,
+            meeting_id=meeting_id,
+            payload_hash=payload_hash,
+            webhook_url=settings.PM_WEBHOOK_URL,
+            request_id=request_id,
+        )
+    except Exception:
         logger.exception(
-            "API: SyncService failed to build payload. meeting_id=%s", meeting_id
+            "API: Failed to persist PENDING SyncLog. meeting_id=%s", meeting_id
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to build sync payload. Check server logs for details."
+            detail="Failed to create sync audit record.",
         )
 
     logger.info(
-        "API: Sync payload built successfully. meeting_id=%s, schema_version=%s",
+        "API: PENDING SyncLog created. sync_log_id=%s, meeting_id=%s",
+        sync_log.id,
         meeting_id,
-        sync_payload.schema_version,
     )
 
-    # Step 3 — Dispatch to PM webhook via WebhookService
+    # ── Step 6: Dispatch webhook ──────────────────────────────────────────────
     dispatch_result = await WebhookService.send_meeting_payload(sync_payload)
 
     logger.info(
-        "API: Webhook dispatch completed. meeting_id=%s, success=%s, status_code=%s, message=%r",
+        "API: Webhook dispatch completed. meeting_id=%s, success=%s, "
+        "status_code=%s, message=%r, sync_log_id=%s",
         meeting_id,
         dispatch_result.success,
         dispatch_result.status_code,
         dispatch_result.message,
+        sync_log.id,
     )
 
-    # Step 4 — Set HTTP status based on dispatch outcome; body is always MeetingSyncResponse
+    # ── Step 7: Finalize SyncLog ──────────────────────────────────────────────
+    try:
+        sync_log = await SyncLogService.finalize(db, sync_log, dispatch_result)
+    except Exception:
+        # Non-fatal: log the failure but do not mask the dispatch outcome
+        logger.exception(
+            "API: Failed to finalize SyncLog after dispatch. sync_log_id=%s", sync_log.id
+        )
+
+    # ── Step 8: Return response ───────────────────────────────────────────────
     if not dispatch_result.success:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
         logger.warning(
-            "API: Sync dispatch failed — returning HTTP 503. meeting_id=%s, message=%r",
+            "API: Sync dispatch failed — returning HTTP 503. "
+            "meeting_id=%s, sync_log_id=%s, message=%r",
             meeting_id,
+            sync_log.id,
             dispatch_result.message,
         )
 
@@ -726,4 +794,6 @@ async def sync_meeting(
         status_code=dispatch_result.status_code,
         message=dispatch_result.message,
         dispatched_at=dispatch_result.dispatched_at,
+        sync_log_id=sync_log.id,
+        skipped=False,
     )

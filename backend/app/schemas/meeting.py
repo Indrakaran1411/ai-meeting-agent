@@ -537,7 +537,17 @@ class ReadyResponse(BaseModel):
 
 
 class MeetingSyncResponse(BaseModel):
-    """Schema representing the outcome of a meeting synchronization request."""
+    """Schema representing the outcome of a meeting synchronization request.
+
+    For a successful first sync:
+        success=True, skipped=False, sync_log_id=<uuid>
+
+    For a duplicate payload (already synchronized):
+        success=True, skipped=True, reason="Payload already synchronized."
+
+    For a webhook failure:
+        success=False, skipped=False, sync_log_id=<uuid>
+    """
     model_config = ConfigDict(frozen=True)
 
     success: bool = Field(
@@ -565,4 +575,23 @@ class MeetingSyncResponse(BaseModel):
         description="Timezone-aware UTC timestamp when the sync completed",
         example="2026-06-28T12:00:05Z"
     )
+    sync_log_id: Optional[uuid.UUID] = Field(
+        default=None,
+        description="UUID of the SyncLog audit record created for this attempt",
+        example="f3b1a2c4-5d6e-7f89-a012-b34c5d6e7f89"
+    )
+    skipped: bool = Field(
+        default=False,
+        description=(
+            "True when dispatch was skipped because an identical payload was "
+            "already successfully synchronized (idempotency guard)"
+        ),
+        example=False
+    )
+    reason: Optional[str] = Field(
+        default=None,
+        description="Human-readable explanation when skipped=True",
+        example="Payload already synchronized."
+    )
+
 

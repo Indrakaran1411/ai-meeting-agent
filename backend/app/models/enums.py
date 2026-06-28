@@ -32,3 +32,10 @@ class SignalType(str, enum.Enum):
     DECISION = "decision"
     RISK = "risk"
     GENERAL = "general"
+
+
+class SyncStatus(str, enum.Enum):
+    """Lifecycle status of a sync attempt recorded in SyncLog."""
+    PENDING = "pending"
+    SUCCESS = "success"
+    FAILED = "failed"

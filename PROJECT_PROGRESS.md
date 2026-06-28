@@ -274,12 +274,35 @@ The **AI Meeting Agent** is an enterprise-grade platform designed to ingest meet
   - Scenario 5: Timeout (1 s threshold, 4 s mock delay) → `HTTP 503`, `success=false`, `status_code=null`.
   - Live curl confirmed `X-Request-ID` headers, `/docs`, `/openapi.json`, `/health`, `/ready`, `/api/v1/meetings/stats` all `HTTP 200`.
 
+### T10.6: Sync Audit Log & Idempotency
+* **Objective**: Guard against duplicate webhook dispatches and record every synchronization attempt for compliance/debugging.
+* **Files**:
+  - `backend/app/models/enums.py` (Modified - added `SyncStatus`)
+  - `backend/app/models/sync_log.py` (Created - added `SyncLog` model with compound idempotency index)
+  - `backend/app/models/meeting.py` (Modified - added relationship link)
+  - `backend/app/models/__init__.py` (Modified - exported new entities)
+  - `backend/app/services/sync_log_service.py` (Created - hash/find/persist/finalize logic)
+  - `backend/app/services/__init__.py` (Modified - exported service)
+  - `backend/app/schemas/meeting.py` (Modified - extended `MeetingSyncResponse` with `sync_log_id`, `skipped`, `reason`)
+  - `backend/app/api/v1/meetings.py` (Modified - integrated check, insert pending, finalize logic)
+  - `backend/alembic/versions/a1b2c3d4e5f6_add_sync_logs.py` (Created - schema migration)
+* **Design**:
+  - Deduplication uses a SHA-256 hash computed deterministically from the payload keys and values, explicitly excluding the transient `generated_at` timestamp.
+  - If a successful `SyncLog` with identical `meeting_id` and `payload_hash` is found, the endpoint skips the dispatch and returns `skipped=True` with `success=True`.
+  - Every attempt inserts a `PENDING` record prior to transport initiation, ensuring crashes or unhandled network errors are recorded. The record is updated to `SUCCESS` or `FAILED` after HTTP transport completes.
+* **Verification**:
+  - Spawned comprehensive verification test suite (`scratch_t10_6_verify.py`).
+  - Verified duplicate requests are safely skipped, preserving single dispatch semantics.
+  - Verified modifications to content trigger new dispatches due to distinct SHA-256 hashes.
+  - Verified transport edge cases (HTTP 500 downstream, timeout events) are correctly audited as `FAILED` with custom response messages.
+  - Verified composite indexes (`ix_sync_logs_idempotency` on `[meeting_id, payload_hash, status]`) and individual key constraints.
+
 ---
 
 ## Current Project Status
 
 * **API**: Active at `http://localhost:8000`. Supports multipart uploads under `/api/v1/meetings/upload` with comprehensive MIME/extension checks (accepts `.mp3`, `.wav`, `.m4a`).
-* **Database**: Running PostgreSQL 16 + pgvector. Migration version is at `366f35fdc6b0 (head)`.
+* **Database**: Running PostgreSQL 16 + pgvector. Migration version is at `a1b2c3d4e5f6 (head)`.
 * **Celery & Redis**: Background worker online. Confirmed task reliability (`task_acks_late=True`, `task_reject_on_worker_lost=True`) and connection recovery configuration.
 * **Docker Compose**: Entire stack runs in 4 containers (`meeting_agent_db`, `meeting_agent_redis`, `meeting_agent_backend`, and `meeting_agent_worker`).
 * **Upload Pipeline**: Audio files are safely streamed to disk (enforcing a 100MB limit), a pending DB record is created, and the background task is dispatched for processing.
