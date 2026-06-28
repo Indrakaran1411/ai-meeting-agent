@@ -159,4 +159,19 @@ class RiskUpdateRequest(BaseModel):
     status: Optional[InsightStatus] = Field(None, description="Insight workflow status")
 
 
+class MeetingStatisticsResponse(BaseModel):
+    """Schema representing aggregate statistics for meetings and insights."""
+    total_meetings: int
+    completed_meetings: int
+    processing_meetings: int
+    failed_meetings: int
+    pending_meetings: int
+    total_action_items: int
+    total_decisions: int
+    total_risks: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+
 

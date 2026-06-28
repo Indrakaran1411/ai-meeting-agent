@@ -729,6 +729,79 @@ class MeetingService:
             db, Risk, risk_id, "Risk"
         )
 
+    @staticmethod
+    async def get_meeting_statistics(db: AsyncSession) -> "MeetingStatisticsResponse":
+        """
+        Computes aggregate statistics for meetings, action items, decisions, and risks.
+        Executes highly efficient aggregate SQL queries without loading ORM objects.
+        """
+        logger.info("Service: Computing aggregate meeting statistics.")
+        import time
+        from sqlalchemy import select, func
+        from app.models.enums import MeetingStatus
+        from app.models.meeting import Meeting
+        from app.models.action_item import ActionItem
+        from app.models.decision import Decision
+        from app.models.risk import Risk
+        from app.schemas.meeting import MeetingStatisticsResponse
+
+        start_time = time.perf_counter()
+
+        # 1. Count meetings grouped by status
+        status_stmt = select(Meeting.status, func.count(Meeting.id)).group_by(Meeting.status)
+        status_res = await db.execute(status_stmt)
+        status_rows = status_res.all()
+        status_counts = {row[0]: row[1] for row in status_rows}
+
+        completed_count = status_counts.get(MeetingStatus.COMPLETED, 0)
+        processing_count = status_counts.get(MeetingStatus.PROCESSING, 0)
+        failed_count = status_counts.get(MeetingStatus.FAILED, 0)
+        pending_count = status_counts.get(MeetingStatus.PENDING, 0)
+        total_meetings = completed_count + processing_count + failed_count + pending_count
+
+        # 2. Count total action items
+        action_items_stmt = select(func.count(ActionItem.id))
+        action_items_res = await db.execute(action_items_stmt)
+        total_action_items = action_items_res.scalar_one()
+
+        # 3. Count total decisions
+        decisions_stmt = select(func.count(Decision.id))
+        decisions_res = await db.execute(decisions_stmt)
+        total_decisions = decisions_res.scalar_one()
+
+        # 4. Count total risks
+        risks_stmt = select(func.count(Risk.id))
+        risks_res = await db.execute(risks_stmt)
+        total_risks = risks_res.scalar_one()
+
+        elapsed_time_ms = (time.perf_counter() - start_time) * 1000
+
+        logger.info(
+            "Service: Statistics queries executed in %.2fms. "
+            "Counts: total_meetings=%d, completed=%d, processing=%d, failed=%d, pending=%d, "
+            "action_items=%d, decisions=%d, risks=%d",
+            elapsed_time_ms,
+            total_meetings,
+            completed_count,
+            processing_count,
+            failed_count,
+            pending_count,
+            total_action_items,
+            total_decisions,
+            total_risks
+        )
+
+        return MeetingStatisticsResponse(
+            total_meetings=total_meetings,
+            completed_meetings=completed_count,
+            processing_meetings=processing_count,
+            failed_meetings=failed_count,
+            pending_meetings=pending_count,
+            total_action_items=total_action_items,
+            total_decisions=total_decisions,
+            total_risks=total_risks
+        )
+
 
 
 

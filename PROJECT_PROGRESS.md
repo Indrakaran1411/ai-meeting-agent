@@ -183,6 +183,15 @@ The **AI Meeting Agent** is an enterprise-grade platform designed to ingest meet
   - Verified empty search results return `{ "total_count": 0, "items": [] }` without raising 404.
   - Verified `noload` optimizations execute cleanly, preventing additional selectin queries.
 
+### T8.2: Meeting Statistics API
+* **Objective**: Expose a statistics API (`GET /api/v1/meetings/stats`) returning aggregate counts of meetings by status and total insight entities.
+* **Files**: `backend/app/schemas/meeting.py` (Modified), `backend/app/services/meeting_service.py` (Modified), `backend/app/api/v1/meetings.py` (Modified).
+* **Verification**:
+  - Verified `MeetingStatisticsResponse` Pydantic model correctly serializes all fields.
+  - Verified aggregate SQL count queries run without loading ORM objects or causing N+1 queries.
+  - Verified string Enum subclassing behavior is properly normalized to avoid double-counting.
+  - Verified statistics match raw PostgreSQL queries exactly.
+
 ---
 
 ## Current Project Status

@@ -22,7 +22,8 @@ from app.schemas.meeting import (
     MeetingListResponseItem,
     ActionItemUpdateRequest,
     DecisionUpdateRequest,
-    RiskUpdateRequest
+    RiskUpdateRequest,
+    MeetingStatisticsResponse
 )
 from app.services.meeting_service import MeetingService
 from app.services.storage_service import StorageService
@@ -118,6 +119,21 @@ async def upload_meeting(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal database error occurred while registering meeting.",
         )
+
+
+@router.get(
+    "/meetings/stats",
+    response_model=MeetingStatisticsResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get aggregate meeting statistics",
+    description="Calculates and returns aggregate statistics for meetings, action items, decisions, and risks.",
+)
+async def get_meeting_statistics(
+    db: AsyncSession = Depends(get_db),
+):
+    logger.info("API: GET meeting statistics requested.")
+    stats = await MeetingService.get_meeting_statistics(db)
+    return stats
 
 
 @router.get(
