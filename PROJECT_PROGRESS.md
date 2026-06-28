@@ -163,6 +163,15 @@ The **AI Meeting Agent** is an enterprise-grade platform designed to ingest meet
   - Verified database commits, rollbacks, and automatic triggers on `updated_at` timestamps.
   - Verified correct `404 Not Found` responses when querying missing insight UUIDs.
 
+### T7.3: Meeting Insight Delete API
+* **Objective**: Expose DELETE REST endpoints to hard-delete AI-extracted action items, decisions, and risks.
+* **Files**: `backend/app/services/meeting_service.py` (Modified), `backend/app/api/v1/meetings.py` (Modified).
+* **Verification**:
+  - Verified `delete_action_item`, `delete_decision`, and `delete_risk` endpoints return `204 No Content` on successful deletion.
+  - Verified that deleted entities are fully removed from PostgreSQL tables.
+  - Verified that retrieval and listing APIs no longer return deleted entities.
+  - Verified correct `404 Not Found` responses when deleting non-existent entity UUIDs.
+
 ---
 
 ## Current Project Status

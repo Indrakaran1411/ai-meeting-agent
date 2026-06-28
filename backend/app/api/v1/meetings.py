@@ -401,4 +401,74 @@ async def patch_risk(
     return updated_item
 
 
+@router.delete(
+    "/action-items/{action_item_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete an action item",
+    description="Deletes a specific action item from the database.",
+    tags=["Action Items"],
+)
+async def delete_action_item(
+    action_item_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    logger.info("API: DELETE action item. id=%s", action_item_id)
+    deleted_item = await MeetingService.delete_action_item(db, action_item_id)
+    if not deleted_item:
+        logger.warning("API: Action item not found for deletion. id=%s", action_item_id)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Action item with ID {action_item_id} not found."
+        )
+    logger.info("API: Action item deleted successfully. id=%s", action_item_id)
+    return
+
+
+@router.delete(
+    "/decisions/{decision_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a decision",
+    description="Deletes a specific decision from the database.",
+    tags=["Decisions"],
+)
+async def delete_decision(
+    decision_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    logger.info("API: DELETE decision. id=%s", decision_id)
+    deleted_item = await MeetingService.delete_decision(db, decision_id)
+    if not deleted_item:
+        logger.warning("API: Decision not found for deletion. id=%s", decision_id)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Decision with ID {decision_id} not found."
+        )
+    logger.info("API: Decision deleted successfully. id=%s", decision_id)
+    return
+
+
+@router.delete(
+    "/risks/{risk_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a risk",
+    description="Deletes a specific risk from the database.",
+    tags=["Risks"],
+)
+async def delete_risk(
+    risk_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    logger.info("API: DELETE risk. id=%s", risk_id)
+    deleted_item = await MeetingService.delete_risk(db, risk_id)
+    if not deleted_item:
+        logger.warning("API: Risk not found for deletion. id=%s", risk_id)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Risk with ID {risk_id} not found."
+        )
+    logger.info("API: Risk deleted successfully. id=%s", risk_id)
+    return
+
+
+
 

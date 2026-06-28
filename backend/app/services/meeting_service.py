@@ -638,6 +638,80 @@ class MeetingService:
 
         return total_count, items
 
+    @staticmethod
+    async def _delete_entity(
+        db: AsyncSession,
+        model_cls: Any,
+        entity_id: uuid.UUID,
+        entity_name: str
+    ) -> Optional[Any]:
+        """
+        Private helper to perform common delete logic for database entities.
+        Retrieves the entity, deletes it, commits the transaction, and returns the deleted entity on success.
+        If the entity does not exist, returns None.
+        """
+        logger.info("Service: Attempting to delete %s. id=%s", entity_name, entity_id)
+        db_entity = await db.get(model_cls, entity_id)
+        if not db_entity:
+            logger.warning("Service: %s not found for deletion. id=%s", entity_name, entity_id)
+            return None
+
+        try:
+            await db.delete(db_entity)
+            await db.commit()
+            logger.info("Service: Successfully deleted %s. id=%s", entity_name, entity_id)
+            return db_entity
+        except Exception as e:
+            await db.rollback()
+            logger.error(
+                "Service: Error deleting %s. Transaction rolled back. id=%s. Error: %s",
+                entity_name,
+                entity_id,
+                str(e),
+                exc_info=True
+            )
+            raise e
+
+    @staticmethod
+    async def delete_action_item(
+        db: AsyncSession,
+        action_item_id: uuid.UUID
+    ) -> Optional[Any]:
+        """
+        Deletes an action item.
+        """
+        from app.models.action_item import ActionItem
+        return await MeetingService._delete_entity(
+            db, ActionItem, action_item_id, "ActionItem"
+        )
+
+    @staticmethod
+    async def delete_decision(
+        db: AsyncSession,
+        decision_id: uuid.UUID
+    ) -> Optional[Any]:
+        """
+        Deletes a decision.
+        """
+        from app.models.decision import Decision
+        return await MeetingService._delete_entity(
+            db, Decision, decision_id, "Decision"
+        )
+
+    @staticmethod
+    async def delete_risk(
+        db: AsyncSession,
+        risk_id: uuid.UUID
+    ) -> Optional[Any]:
+        """
+        Deletes a risk.
+        """
+        from app.models.risk import Risk
+        return await MeetingService._delete_entity(
+            db, Risk, risk_id, "Risk"
+        )
+
+
 
 
 
