@@ -24,7 +24,9 @@ from app.schemas.meeting import (
     DecisionUpdateRequest,
     RiskUpdateRequest,
     MeetingStatisticsResponse,
-    DashboardResponse
+    DashboardResponse,
+    ErrorResponse,
+    COMMON_ERRORS
 )
 from app.services.meeting_service import MeetingService
 from app.services.storage_service import StorageService
@@ -32,6 +34,9 @@ from app.workers.tasks import process_meeting
 
 # Setup structured logger
 logger = logging.getLogger("app.api.v1.meetings")
+
+
+
 
 
 def create_summary_preview(summary: Optional[str], max_length: int = 200) -> Optional[str]:
@@ -65,6 +70,8 @@ router = APIRouter(tags=["Meetings"])
     status_code=status.HTTP_202_ACCEPTED,
     summary="Upload and register a new meeting",
     description="Registers a new meeting in the pipeline. Consent is mandatory.",
+    response_description="Uploader registration successful, audio ingestion and AI processing enqueued asynchronously",
+    responses=COMMON_ERRORS,
 )
 async def upload_meeting(
     title: str = Form(..., description="The title of the meeting"),
@@ -143,6 +150,8 @@ async def upload_meeting(
     summary="Get consolidated dashboard data",
     description="Returns aggregate statistics, recent meetings (latest 5), and recent draft action items (latest 5).",
     tags=["Dashboard"],
+    response_description="Consolidated dashboard statistics, recent meetings, and draft action items retrieved successfully",
+    responses=COMMON_ERRORS,
 )
 async def get_dashboard(
     db: AsyncSession = Depends(get_db),
@@ -174,6 +183,8 @@ async def get_dashboard(
     status_code=status.HTTP_200_OK,
     summary="Get aggregate meeting statistics",
     description="Calculates and returns aggregate statistics for meetings, action items, decisions, and risks.",
+    response_description="Aggregate counts for meeting status states and total extracted insights retrieved successfully",
+    responses=COMMON_ERRORS,
 )
 async def get_meeting_statistics(
     db: AsyncSession = Depends(get_db),
@@ -189,6 +200,8 @@ async def get_meeting_statistics(
     status_code=status.HTTP_200_OK,
     summary="Search and filter meetings",
     description="Search meeting titles and summaries with support for pagination, status, and source filters.",
+    response_description="Paginated list of meetings matching search query and status/source filters retrieved successfully",
+    responses=COMMON_ERRORS,
 )
 async def search_meetings(
     q: Optional[str] = Query(None, description="Search term for title or summary"),
@@ -236,6 +249,8 @@ async def search_meetings(
     status_code=status.HTTP_200_OK,
     summary="Get full details of a specific meeting",
     description="Retrieves a meeting's metadata, processing status, and summary description.",
+    response_description="Detailed meeting metadata and processing summary retrieved successfully",
+    responses=COMMON_ERRORS,
 )
 async def get_meeting(
     meeting_id: uuid.UUID,
@@ -261,6 +276,8 @@ async def get_meeting(
     status_code=status.HTTP_200_OK,
     summary="Get summary of a specific meeting",
     description="Retrieves only the AI-generated high-level summary paragraph for a meeting.",
+    response_description="AI-generated executive summary retrieved successfully",
+    responses=COMMON_ERRORS,
 )
 async def get_meeting_summary(
     meeting_id: uuid.UUID,
@@ -286,6 +303,8 @@ async def get_meeting_summary(
     status_code=status.HTTP_200_OK,
     summary="Get action items of a specific meeting",
     description="Retrieves all AI-extracted action items associated with a meeting.",
+    response_description="List of AI-extracted meeting action items retrieved successfully",
+    responses=COMMON_ERRORS,
 )
 async def get_meeting_action_items(
     meeting_id: uuid.UUID,
@@ -313,6 +332,8 @@ async def get_meeting_action_items(
     status_code=status.HTTP_200_OK,
     summary="Get decisions of a specific meeting",
     description="Retrieves all AI-extracted decisions associated with a meeting.",
+    response_description="List of AI-extracted meeting decisions retrieved successfully",
+    responses=COMMON_ERRORS,
 )
 async def get_meeting_decisions(
     meeting_id: uuid.UUID,
@@ -340,6 +361,8 @@ async def get_meeting_decisions(
     status_code=status.HTTP_200_OK,
     summary="Get risks of a specific meeting",
     description="Retrieves all AI-extracted risks associated with a meeting.",
+    response_description="List of AI-extracted meeting risks and blockers retrieved successfully",
+    responses=COMMON_ERRORS,
 )
 async def get_meeting_risks(
     meeting_id: uuid.UUID,
@@ -367,6 +390,8 @@ async def get_meeting_risks(
     status_code=status.HTTP_200_OK,
     summary="List paginated meetings",
     description="Retrieves a list of meetings sorted by created_at DESC with optional status and source filtering.",
+    response_description="Paginated list of meeting metadata records retrieved successfully",
+    responses=COMMON_ERRORS,
 )
 async def list_meetings(
     limit: int = Query(10, ge=1, le=100, description="Maximum number of records to return"),
@@ -407,6 +432,8 @@ async def list_meetings(
     summary="Partially update an action item",
     description="Updates only the provided fields of a specific action item.",
     tags=["Action Items"],
+    response_description="Action item updated successfully",
+    responses=COMMON_ERRORS,
 )
 async def patch_action_item(
     action_item_id: uuid.UUID,
@@ -440,6 +467,8 @@ async def patch_action_item(
     summary="Partially update a decision",
     description="Updates only the provided fields of a specific decision.",
     tags=["Decisions"],
+    response_description="Decision updated successfully",
+    responses=COMMON_ERRORS,
 )
 async def patch_decision(
     decision_id: uuid.UUID,
@@ -473,6 +502,8 @@ async def patch_decision(
     summary="Partially update a risk",
     description="Updates only the provided fields of a specific risk.",
     tags=["Risks"],
+    response_description="Risk updated successfully",
+    responses=COMMON_ERRORS,
 )
 async def patch_risk(
     risk_id: uuid.UUID,
@@ -505,6 +536,8 @@ async def patch_risk(
     summary="Delete an action item",
     description="Deletes a specific action item from the database.",
     tags=["Action Items"],
+    response_description="Action item deleted successfully (no content returned)",
+    responses=COMMON_ERRORS,
 )
 async def delete_action_item(
     action_item_id: uuid.UUID,
@@ -528,6 +561,8 @@ async def delete_action_item(
     summary="Delete a decision",
     description="Deletes a specific decision from the database.",
     tags=["Decisions"],
+    response_description="Decision deleted successfully (no content returned)",
+    responses=COMMON_ERRORS,
 )
 async def delete_decision(
     decision_id: uuid.UUID,
@@ -551,6 +586,8 @@ async def delete_decision(
     summary="Delete a risk",
     description="Deletes a specific risk from the database.",
     tags=["Risks"],
+    response_description="Risk deleted successfully (no content returned)",
+    responses=COMMON_ERRORS,
 )
 async def delete_risk(
     risk_id: uuid.UUID,

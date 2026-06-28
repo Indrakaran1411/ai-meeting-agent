@@ -6,13 +6,27 @@ from fastapi import APIRouter, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from app.db.database import async_session_maker
+from app.schemas.meeting import HealthResponse, ReadyResponse, ErrorResponse, COMMON_ERRORS
 
 logger = logging.getLogger("app.infrastructure")
 
 router = APIRouter(tags=["Infrastructure"])
 
+INFRA_ERRORS = {
+    500: COMMON_ERRORS[500],
+    503: {"model": ErrorResponse, "description": "Service Unavailable - One or more backend dependencies (Postgres/Redis) are unreachable"}
+}
 
-@router.get("/health")
+
+@router.get(
+    "/health",
+    response_model=HealthResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get liveness status",
+    description="Returns liveness check status. Does not query underlying databases or caches.",
+    response_description="API service is live and processing HTTP requests",
+    responses={500: {"model": ErrorResponse, "description": "Internal Server Error"}}
+)
 async def health_check():
     logger.info("Infrastructure: GET /health check requested.")
     return {
@@ -22,7 +36,15 @@ async def health_check():
     }
 
 
-@router.get("/ready")
+@router.get(
+    "/ready",
+    response_model=ReadyResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get readiness status",
+    description="Tests connectivity to all critical downstream resources (PostgreSQL database and Redis message broker).",
+    response_description="All downstream resources are ready and fully accessible",
+    responses=INFRA_ERRORS
+)
 async def readiness_check():
     logger.info("Infrastructure: GET /ready check requested.")
     

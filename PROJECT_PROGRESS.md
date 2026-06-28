@@ -228,6 +228,14 @@ The **AI Meeting Agent** is an enterprise-grade platform designed to ingest meet
   - Verified error trace details are masked from responses and printed safely in logs.
   - Verified `X-Request-ID` is correctly attached to responses and logging formats.
 
+### T10.1: OpenAPI & API Documentation Hardening
+* **Objective**: Harden OpenAPI documentation schema specifications by adding field descriptions, examples, and documenting standard error response payloads.
+* **Files**: `backend/app/schemas/meeting.py` (Modified), `backend/app/api/v1/meetings.py` (Modified), `backend/app/api/v1/infrastructure.py` (Modified).
+* **Verification**:
+  - Verified Pydantic models contain detailed field descriptions and representative examples.
+  - Verified Swagger UI exposes nested error structures for `400`, `404`, `422`, `500`, and `503` status codes across routes.
+  - Verified `/openapi.json` and `/docs` generate and render cleanly with zero startup warnings.
+
 ---
 
 ## Current Project Status
