@@ -236,6 +236,14 @@ The **AI Meeting Agent** is an enterprise-grade platform designed to ingest meet
   - Verified Swagger UI exposes nested error structures for `400`, `404`, `422`, `500`, and `503` status codes across routes.
   - Verified `/openapi.json` and `/docs` generate and render cleanly with zero startup warnings.
 
+### T10.2: Define PM Agent Payload Schemas
+* **Objective**: Implement JSON schemas representing PM Agent payloads.
+* **Files**: `backend/app/schemas/sync.py` (Created), `backend/app/schemas/__init__.py` (Modified).
+* **Verification**:
+  - Implemented immutable (frozen) Pydantic models `ActionItemSyncPayload`, `DecisionSyncPayload`, `RiskSyncPayload`, and `MeetingSyncPayload`.
+  - Excluded sensitive or internal fields (`verbatim_quote`, `created_at`, `updated_at`, ORM metadata).
+  - Verified serialization, default collections factory (`default_factory=list`), and timezone-aware `generated_at` UTC datetime fields under Docker container unit checks.
+
 ---
 
 ## Current Project Status
