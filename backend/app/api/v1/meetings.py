@@ -121,6 +121,65 @@ async def upload_meeting(
 
 
 @router.get(
+    "/meetings/search",
+    response_model=MeetingListResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Search and filter meetings",
+    description="Search meeting titles and summaries with support for pagination, status, and source filters.",
+)
+async def search_meetings(
+    q: Optional[str] = Query(None, description="Search term for title or summary"),
+    status: Optional[MeetingStatus] = Query(None, description="Filter meetings by processing status"),
+    source: Optional[str] = Query(None, description="Filter meetings by source platform (case-insensitive)"),
+    limit: int = Query(10, ge=1, le=100, description="Maximum number of records to return"),
+    offset: int = Query(0, ge=0, description="Offset index for pagination"),
+    db: AsyncSession = Depends(get_db),
+):
+    logger.info(
+        "API: Searching meetings. q=%s, status=%s, source=%s, limit=%d, offset=%d",
+        q or "None",
+        status.value if status else "None",
+        source or "None",
+        limit,
+        offset
+    )
+    total_count, items = await MeetingService.get_paginated_meetings(
+        db,
+        limit=limit,
+        offset=offset,
+        status=status,
+        source=source,
+        q=q
+    )
+
+    # Map ORM objects to MeetingListResponseItem DTOs cleanly
+    response_items = []
+    for item in items:
+        dto = MeetingListResponseItem(
+            id=item.id,
+            title=item.title,
+            status=item.status,
+            created_at=item.created_at,
+            meeting_date=item.meeting_date,
+            duration_minutes=item.duration_minutes,
+            source=item.source,
+            summary_preview=create_summary_preview(item.summary)
+        )
+        response_items.append(dto)
+
+    logger.info(
+        "API: Search completed. q=%s, status=%s, source=%s, limit=%d, offset=%d, total_count=%d",
+        q or "None",
+        status.value if status else "None",
+        source or "None",
+        limit,
+        offset,
+        total_count
+    )
+    return MeetingListResponse(total_count=total_count, items=response_items)
+
+
+@router.get(
     "/meetings/{meeting_id}",
     response_model=MeetingDetailResponse,
     status_code=status.HTTP_200_OK,

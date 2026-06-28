@@ -172,6 +172,17 @@ The **AI Meeting Agent** is an enterprise-grade platform designed to ingest meet
   - Verified that retrieval and listing APIs no longer return deleted entities.
   - Verified correct `404 Not Found` responses when deleting non-existent entity UUIDs.
 
+### T8.1: Meeting Search & Filtering API
+* **Objective**: Expose a search API to retrieve meetings filterable by status/source and searchable by title/summary text.
+* **Files**: `backend/app/services/meeting_service.py` (Modified), `backend/app/api/v1/meetings.py` (Modified).
+* **Verification**:
+  - Verified `GET /api/v1/meetings/search` is declared before dynamic path matches, avoiding ID type conflicts.
+  - Verified title OR summary case-insensitive `ILIKE` search filters matching records correctly.
+  - Verified composition of filters (q + status + source) handles composite scenarios successfully.
+  - Verified pagination parameters (`limit` and `offset`) limit and paginate records correctly.
+  - Verified empty search results return `{ "total_count": 0, "items": [] }` without raising 404.
+  - Verified `noload` optimizations execute cleanly, preventing additional selectin queries.
+
 ---
 
 ## Current Project Status

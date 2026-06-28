@@ -590,20 +590,23 @@ class MeetingService:
         limit: int,
         offset: int,
         status: Optional[MeetingStatus] = None,
-        source: Optional[str] = None
+        source: Optional[str] = None,
+        q: Optional[str] = None
     ) -> Tuple[int, list]:
         """
         Retrieves a paginated list of meetings matching optional filters, sorted by created_at DESC.
         Uses noload() optimization to suppress eager relationship loading.
+        Supports query parameter q to search in title OR summary.
         """
         logger.info(
-            "Service: Querying paginated meetings list. limit=%d, offset=%d, status=%s, source=%s",
+            "Service: Querying paginated meetings list. limit=%d, offset=%d, status=%s, source=%s, q=%s",
             limit,
             offset,
             status.value if status else "None",
-            source or "None"
+            source or "None",
+            q or "None"
         )
-        from sqlalchemy import select, func
+        from sqlalchemy import select, func, or_
         from sqlalchemy.orm import noload
 
         # 1. Build common filters
@@ -613,6 +616,21 @@ class MeetingService:
         if source:
             # Case-insensitive exact match
             where_clauses.append(Meeting.source.ilike(source))
+
+        # Normalize search query q
+        q = q.strip() if q else None
+        if not q:
+            q = None
+
+        if q:
+            # Title OR Summary ILIKE search
+            search_pattern = f"%{q}%"
+            where_clauses.append(
+                or_(
+                    Meeting.title.ilike(search_pattern),
+                    Meeting.summary.ilike(search_pattern)
+                )
+            )
 
         # 2. Count total matches
         count_stmt = select(func.count(Meeting.id))
