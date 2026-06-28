@@ -297,6 +297,30 @@ The **AI Meeting Agent** is an enterprise-grade platform designed to ingest meet
   - Verified transport edge cases (HTTP 500 downstream, timeout events) are correctly audited as `FAILED` with custom response messages.
   - Verified composite indexes (`ix_sync_logs_idempotency` on `[meeting_id, payload_hash, status]`) and individual key constraints.
 
+### T11.1: Initialize MCP Workspace
+* **Objective**: Scaffold a Node.js workspace configured to build the Model Context Protocol (MCP) server.
+* **Files**:
+  - `mcp-server/package.json` (Modified - defined pinned dependencies: `@modelcontextprotocol/sdk@1.29.0`, `pg@8.22.0`, `dotenv@17.4.2`)
+  - `mcp-server/server.js` (Modified - basic stdio server instantiation)
+* **Verification**:
+  - Successfully ran `npm install` with zero vulnerabilities.
+  - Verified starting the server using MCP Inspector, ensuring error-free stdio transport initialization and zero stdout pollution.
+
+### T11.2: PostgreSQL Connection Support
+* **Objective**: Implement a reusable, production-ready PostgreSQL connection pool that supports Docker and host execution environments seamlessly.
+* **Files**:
+  - `mcp-server/database.js` (Created)
+* **Design**:
+  - Uses `pg.Pool` with a singleton pool instance.
+  - DATABASE_URL is the single source of truth. Inside Docker Compose, DATABASE_URL should use the hostname "db". When running outside Docker, DATABASE_URL should typically use "localhost" (or whatever hostname is explicitly configured by the user). No automatic rewriting or network detection is performed in the application code.
+  - Handles errors (missing `DATABASE_URL`, authentication failures, network timeout) gracefully, logging diagnostics strictly on `stderr`.
+* **Verification**:
+  - Executed happy path verification by connecting to the database and successfully querying `SELECT 1;`.
+  - Confirmed pool ends cleanly on request.
+  - Verified missing `DATABASE_URL` fails gracefully with clear error handling.
+  - Verified authentication failures and host network timeouts fail fast (5 seconds connection timeout configured).
+  - Verified zero stdout pollution (diagnostics routed to `stderr` only).
+
 ---
 
 ## Current Project Status
