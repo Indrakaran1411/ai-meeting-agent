@@ -332,6 +332,21 @@ The **AI Meeting Agent** is an enterprise-grade platform designed to ingest meet
   - Querying `tools/call` for `list_meetings` successfully routes the request and executes the stub handler, returning the metadata as expected.
   - Checked logs and confirmed all diagnostics are cleanly directed to `stderr` only.
 
+### T11.4: list_meetings Tool Implementation
+* **Objective**: Query PostgreSQL database using the shared connection pool from `database.js` to return a paginated and filtered list of meetings.
+* **Files**:
+  - `mcp-server/tools/list_meetings.js` (Modified - added database query, input validation, and parameter parsing logic)
+* **Design**:
+  - Validates `limit` and `offset` ranges. Validates optional lowercase `status` filter against the allowed enum set and maps it to uppercase strings to match PostgreSQL DB enum definitions.
+  - Queries `meetings` using parameterized SQL with appropriate casting (`status = $1::meeting_status`) to preserve index usage (sargability).
+  - Returns result formatted as JSON text content structure `{ meetings: [ ... ] }`.
+* **Verification**:
+  - Successfully connected to the container database and executed list query.
+  - Verified `limit` and `offset` operate correctly.
+  - Verified `status` filters work as expected.
+  - Verified invalid limits (e.g., `0`) and status inputs (e.g., `'invalid_status'`) fail fast with validation errors.
+  - Diagnostics are written strictly to `stderr` with zero stdout pollution.
+
 ---
 
 ## Current Project Status

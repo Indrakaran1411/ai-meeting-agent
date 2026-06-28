@@ -515,116 +515,127 @@ This document contains the atomic task breakdown for building the **Meeting & Ch
 
 ## Milestone 10: Downstream PM Agent Sync
 
-### T10.1: Build API Dispatcher Client
+### T10.1: OpenAPI Documentation
 *   **Task ID**: `T10.1`
-*   **Objective**: Implement HTTP client handling outgoing requests.
-*   **Files or assets**: `backend/app/services/sync_service.py`
-*   **Inputs**: Target API endpoints config.
-*   **Outputs**: HTTP requests.
-*   **Dependencies**: `T1.4`.
-*   **Acceptance criteria**: Outgoing requests include required authentication.
-*   **Manual testing**: Test simple post to mock endpoint server.
-*   **Common mistakes**: Port conflicts blocking outgoing calls.
+*   **Objective**: Document the Downstream PM Agent synchronization API contracts in OpenAPI format.
+*   **Files or assets**: `backend/openapi.json`
+*   **Inputs**: API sync requirements.
+*   **Outputs**: OpenAPI sync specifications.
+*   **Dependencies**: `T8.5`.
+*   **Acceptance criteria**: Valid OpenAPI document detailing paths, status codes, and schema formats.
+*   **Manual testing**: Verify OpenAPI schema renders correctly in Swagger docs.
+*   **Common mistakes**: Out-of-sync schemas.
 
-### T10.2: Define PM Agent Payload Schemas
+### T10.2: PM Sync Payload Schemas
 *   **Task ID**: `T10.2`
-*   **Objective**: Implement JSON schemas representing PM Agent payloads.
-*   **Files or assets**: `backend/app/schemas.py` (Sync models)
-*   **Inputs**: Payload specifications.
-*   **Outputs**: Validation model definitions.
+*   **Objective**: Define validation schemas representing PM Agent payloads.
+*   **Files or assets**: `backend/app/schemas/sync.py`
+*   **Inputs**: Ingestion specifications.
+*   **Outputs**: Pydantic validation models.
 *   **Dependencies**: `T10.1`.
-*   **Acceptance criteria**: JSON matches PM Agent contract schema specs.
-*   **Manual testing**: Run unit test checks on payload formatter.
-*   **Common mistakes**: Missing required properties.
+*   **Acceptance criteria**: Data schemas accurately parse and validate payload properties.
+*   **Manual testing**: Run unit test checks on payload parsing.
+*   **Common mistakes**: Missing optional fields or wrong datetime constraints.
 
-### T10.3: Map DB properties to PM Payload
+### T10.3: Sync Service
 *   **Task ID**: `T10.3`
-*   **Objective**: Write data conversion utilities.
-*   **Files or assets**: Payload mapping helper.
-*   **Inputs**: Action/Decision records.
-*   **Outputs**: Payload parameters.
+*   **Objective**: Implement core sync service to compile meeting records and map database structures to sync payload.
+*   **Files or assets**: `backend/app/services/sync_service.py`
+*   **Inputs**: Meeting ID.
+*   **Outputs**: Structured sync payload object.
 *   **Dependencies**: `T10.2`.
-*   **Acceptance criteria**: JSON payload accurately represents database records.
-*   **Manual testing**: Parse test row and verify output fields match.
-*   **Common mistakes**: Field names mismatched.
+*   **Acceptance criteria**: Correctly gathers meeting, transcript, action item, decision, and risk records.
+*   **Manual testing**: Construct payload for a test meeting and verify nested JSON structures.
+*   **Common mistakes**: Incomplete relationship loading leading to empty fields.
 
-### T10.4: Hook up API POST Dispatch Execution
+### T10.4: PM Webhook Dispatcher
 *   **Task ID**: `T10.4`
-*   **Objective**: Trigger outgoing request upon client approval click.
-*   **Files or assets**: Approval event handler integrations.
-*   **Inputs**: Action items data.
-*   **Outputs**: API response status.
-*   **Dependencies**: `T8.5`, `T10.3`.
-*   **Acceptance criteria**: Client approval sends request payload to PM Agent.
-*   **Manual testing**: Click approve and check mock server logs for webhook receipt.
-*   **Common mistakes**: API call failure blocking database writes.
+*   **Objective**: Implement HTTP client handling outgoing webhook requests to external PM services.
+*   **Files or assets**: `backend/app/services/webhook_service.py`
+*   **Inputs**: Webhook URL, sync payload.
+*   **Outputs**: Webhook dispatch status.
+*   **Dependencies**: `T10.3`.
+*   **Acceptance criteria**: Safely sends payloads over HTTP POST and handles connection/timeout failures.
+*   **Manual testing**: Dispatch payload to mock endpoint and verify request headers and payload.
+*   **Common mistakes**: Swallowing socket errors without returning structured results.
 
-### T10.5: Implement Status Synchronization
+### T10.5: Meeting Sync API Endpoint
 *   **Task ID**: `T10.5`
-*   **Objective**: Set state flag to "Synced" upon successful sync.
-*   **Files or assets**: Database update action blocks.
-*   **Inputs**: HTTP response status codes.
-*   **Outputs**: Updated record properties.
+*   **Objective**: Expose API endpoint to orchestrate full meeting sync pipeline from retrieval to webhook dispatch.
+*   **Files or assets**: `backend/app/api/v1/meetings.py` (sync endpoint)
+*   **Inputs**: Meeting ID, custom HTTP response wrapper.
+*   **Outputs**: HTTP response status and sync response schema.
 *   **Dependencies**: `T10.4`.
-*   **Acceptance criteria**: ActionItem status updates to `Synced` in database.
-*   **Manual testing**: Verify action item status changes to `Synced` in dashboard view.
-*   **Common mistakes**: Updating status flag values on failed API requests.
+*   **Acceptance criteria**: Synchronizes successfully and returns HTTP 200 on success or HTTP 503 on dispatch failure.
+*   **Manual testing**: Call sync endpoint with valid/invalid meeting IDs and test endpoints.
+*   **Common mistakes**: Hardcoding webhook configurations instead of reading settings.
+
+### T10.6: Sync Audit Log & Idempotency
+*   **Task ID**: `T10.6`
+*   **Objective**: Prevent duplicate webhook dispatches and record every synchronization attempt.
+*   **Files or assets**: `backend/app/models/sync_log.py`, `backend/app/services/sync_log_service.py`, Alembic schema migrations.
+*   **Inputs**: Payload hash, status indicators.
+*   **Outputs**: Idempotent checks and log database writes.
+*   **Dependencies**: `T10.5`.
+*   **Acceptance criteria**: Duplicate sync requests are skipped; every attempt is logged as pending and updated to success/failed.
+*   **Manual testing**: Run multiple sync calls on same meeting content and confirm subsequent attempts are skipped.
+*   **Common mistakes**: Generating hash on mutable payload fields (e.g. timestamp of request).
 
 ---
 
 ## Milestone 11: MCP Server Bridge
 
-### T11.1: Initialize Node workspace
+### T11.1: MCP Server Bootstrap
 *   **Task ID**: `T11.1`
-*   **Objective**: Scaffold Node project directory and configurations.
-*   **Files or assets**: `mcp-server/package.json`, `mcp-server/server.js` template.
-*   **Inputs**: npm configs.
-*   **Outputs**: Workspace dependencies.
+*   **Objective**: Initialize standalone Node.js project with stdio transport configurations.
+*   **Files or assets**: `mcp-server/package.json`, `mcp-server/server.js`
+*   **Inputs**: npm package settings, pinned dependencies.
+*   **Outputs**: Operational baseline stdio transport server.
 *   **Dependencies**: None.
-*   **Acceptance criteria**: `npm install` runs without error.
-*   **Manual testing**: Run index and confirm base node runtime starts.
-*   **Common mistakes**: Conflict in node modules workspace.
+*   **Acceptance criteria**: The server runs cleanly on stdio, communicating via JSON-RPC protocol.
+*   **Manual testing**: Start server and verify that it accepts connection handshake.
+*   **Common mistakes**: Standard output pollution by other packages.
 
-### T11.2: Postgres client connection config
+### T11.2: PostgreSQL Connection Support
 *   **Task ID**: `T11.2`
-*   **Objective**: Integrate database driver and test connections.
-*   **Files or assets**: `mcp-server/database.js`.
-*   **Inputs**: Connection parameters.
-*   **Outputs**: Database client handler.
+*   **Objective**: Implement reusable, production-ready PostgreSQL connection pool.
+*   **Files or assets**: `mcp-server/database.js`
+*   **Inputs**: DATABASE_URL configuration.
+*   **Outputs**: Database query helper.
 *   **Dependencies**: `T11.1`, `T1.2`.
-*   **Acceptance criteria**: Connects and retrieves test records from Postgres.
-*   **Manual testing**: Run connection test script and verify printout.
-*   **Common mistakes**: Wrong connection port configuration.
+*   **Acceptance criteria**: Singleton connection pool resolves queries and closes cleanly.
+*   **Manual testing**: Run select query script and verify results.
+*   **Common mistakes**: Missing statement/connection timeout configurations.
 
-### T11.3: Define list_meetings tool
+### T11.3: MCP Tool Registration
 *   **Task ID**: `T11.3`
-*   **Objective**: Implement MCP tool handler exposing meetings query.
-*   **Files or assets**: `mcp-server/tools/list_meetings.js`.
-*   **Inputs**: Input schemas.
-*   **Outputs**: JSON tool response list.
+*   **Objective**: Register MCP tools (`list_meetings` and `search_transcripts`) with input schema validations.
+*   **Files or assets**: `mcp-server/server.js`, `mcp-server/tools/` metadata stubs.
+*   **Inputs**: Input schemas, metadata fields.
+*   **Outputs**: Registered tool definitions.
 *   **Dependencies**: `T11.2`.
-*   **Acceptance criteria**: Returns meeting list in standard MCP format.
-*   **Manual testing**: Test schema parameters via command line calls.
-*   **Common mistakes**: Returns data mismatch in schema.
+*   **Acceptance criteria**: Exposes tools correctly to client requests without stdout pollution.
+*   **Manual testing**: Query `tools/list` over stdio and inspect returned JSON-RPC body.
+*   **Common mistakes**: Mismatch between SDK request handlers and input formats.
 
-### T11.4: Define search_transcripts tool
+### T11.4: list_meetings Tool Implementation
 *   **Task ID**: `T11.4`
-*   **Objective**: Implement MCP tool handler exposing similarity queries.
-*   **Files or assets**: `mcp-server/tools/search_transcripts.js`.
-*   **Inputs**: Input schemas.
-*   **Outputs**: JSON tool response list.
-*   **Dependencies**: `T11.2`.
-*   **Acceptance criteria**: Returns search outcomes matching input query term.
-*   **Manual testing**: Query dummy term and verify search outcomes formats.
-*   **Common mistakes**: Missing input validations.
+*   **Objective**: Implement database execution logic for list_meetings tool.
+*   **Files or assets**: `mcp-server/tools/list_meetings.js`
+*   **Inputs**: limit, offset, status arguments.
+*   **Outputs**: Paginated list of meetings.
+*   **Dependencies**: `T11.3`.
+*   **Acceptance criteria**: Correctly executes parameterized SQL queries and validates inputs.
+*   **Manual testing**: Query tool via inspector and verify JSON result.
+*   **Common mistakes**: Using non-sargable string concatenation queries.
 
-### T11.5: Verify tool executions
+### T11.5: search_transcripts Tool Implementation
 *   **Task ID**: `T11.5`
-*   **Objective**: Verify tool executions using MCP inspector CLI toolsets.
-*   **Files or assets**: Configuration files.
-*   **Inputs**: CLI console commands.
-*   **Outputs**: Run tests log printout.
-*   **Dependencies**: `T11.3`, `T11.4`.
-*   **Acceptance criteria**: Inspector runs successfully and executes target tools.
-*   **Manual testing**: Start server and run `npx @modelcontextprotocol/inspector node server.js`.
-*   **Common mistakes**: Port conflicts.
+*   **Objective**: Implement database execution logic for search_transcripts tool.
+*   **Files or assets**: `mcp-server/tools/search_transcripts.js`
+*   **Inputs**: query, limit arguments.
+*   **Outputs**: Search results matching keyword.
+*   **Dependencies**: `T11.3`.
+*   **Acceptance criteria**: Performs case-insensitive search on transcript database content.
+*   **Manual testing**: Query term via inspector and confirm relevancy and speaker context.
+*   **Common mistakes**: Unvalidated parameters or unindexed search columns.

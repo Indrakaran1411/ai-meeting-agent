@@ -1,6 +1,7 @@
-import dotenv from "dotenv";
+import { readFileSync, existsSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import dotenv from "dotenv";
 import pg from "pg";
 
 const { Pool } = pg;
@@ -11,9 +12,23 @@ const __dirname = path.dirname(__filename);
 // Load environment variables from the parent folder's .env file.
 // DATABASE_URL is the single source of truth.
 // Inside Docker Compose, DATABASE_URL should use the hostname "db".
-// When running outside Docker, DATABASE_URL should typically use "localhost" (or whatever hostname is explicitly configured by the user).
+// When running outside Docker, DATABASE_URL should typically use "localhost"
+// (or whatever hostname is explicitly configured by the user).
 // The application never rewrites or modifies DATABASE_URL.
-dotenv.config({ path: path.resolve(__dirname, "../.env") });
+//
+// IMPORTANT: We use dotenv.parse() instead of dotenv.config() because
+// dotenv v17.x writes a status line to stdout, which corrupts the
+// MCP stdio transport (stdout is reserved exclusively for JSON-RPC messages).
+const envPath = path.resolve(__dirname, "../.env");
+if (existsSync(envPath)) {
+  const envContent = readFileSync(envPath, "utf-8");
+  const parsed = dotenv.parse(envContent);
+  for (const [key, value] of Object.entries(parsed)) {
+    if (!(key in process.env)) {
+      process.env[key] = value;
+    }
+  }
+}
 
 let connectionString = process.env.DATABASE_URL;
 
