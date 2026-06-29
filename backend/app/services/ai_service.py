@@ -71,7 +71,10 @@ class AIService:
         start_time = time.perf_counter()
 
         try:
-            # Enforce structured Pydantic schema validation at the SDK level
+            # We configure Gemini to return a structured JSON response that strictly complies
+            # with our Pydantic schema (MeetingAnalysis). By enforcing this constraint at the SDK level,
+            # Gemini dynamically shapes its token generation to conform to the schema syntax,
+            # eliminating the need for manual parsing, regex cleanup, or self-correction loops.
             config = types.GenerateContentConfig(
                 system_instruction=system_instruction,
                 response_mime_type="application/json",
@@ -80,7 +83,8 @@ class AIService:
                 max_output_tokens=settings.GEMINI_MAX_OUTPUT_TOKENS,
             )
 
-            # Call asynchronous API namespace client.aio
+            # We use client.aio for fully non-blocking asynchronous calls to the Google Gemini GenAI API,
+            # ensuring that the worker event loop thread is never stalled waiting for network I/O.
             response = await client.aio.models.generate_content(
                 model=model_name,
                 contents=transcript,

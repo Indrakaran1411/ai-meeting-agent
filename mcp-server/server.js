@@ -26,6 +26,13 @@ async function main() {
     }
   );
 
+  // MCP Protocol Constraint: Reserving stdout for JSON-RPC transport protocol.
+  // Under the Stdio transport framework, stdout (console.log) is strictly reserved
+  // for JSON-RPC serialization. Writing logs, telemetry, or print statements directly to stdout
+  // will corrupt the protocol stream and cause the MCP client interface (e.g. Claude Desktop)
+  // to crash. Consequently, all server logging, status notices, and errors MUST be routed
+  // explicitly to stderr via console.error.
+  
   // 1. Tool Registration Handler (Exposes metadata and input schemas to clients)
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     console.error("Listing registered tools for MCP client...");
@@ -66,7 +73,10 @@ async function main() {
     console.error("MCP Server Error:", error);
   };
 
-  // Graceful shutdown handling
+  // Graceful shutdown handling: Catch termination signals from Docker or the OS
+  // and close the PostgreSQL database connection pool. Failing to close the pool
+  // will leave orphaned connection sockets active on the database server, leading
+  // to resource exhaustion over multiple hot-reloads.
   const shutdown = async () => {
     console.error("Shutting down MCP server...");
     try {

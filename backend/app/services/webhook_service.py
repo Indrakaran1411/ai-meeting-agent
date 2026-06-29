@@ -23,6 +23,10 @@ class WebhookService:
     @classmethod
     def get_client(cls) -> httpx.AsyncClient:
         """Returns a cached/shared AsyncClient configuration."""
+        # Socket Optimization Decision: We cache the httpx.AsyncClient instance. 
+        # Creating a new HTTP client for every request triggers new TCP handshakes,
+        # socket allocations, and TLS negotiations. Storing it as a class singleton
+        # enables connection pool reuse, cutting dispatch latency.
         if cls._client is None or cls._client.is_closed:
             timeout_seconds = float(settings.PM_WEBHOOK_TIMEOUT)
             cls._client = httpx.AsyncClient(
@@ -34,6 +38,8 @@ class WebhookService:
     @classmethod
     async def close_client(cls) -> None:
         """Closes the shared AsyncClient if initialized."""
+        # Lifespan Hook: This is invoked during FastAPI context shutdown to close
+        # any open sockets in the pool, preventing connection leaks.
         if cls._client is not None and not cls._client.is_closed:
             await cls._client.aclose()
             cls._client = None

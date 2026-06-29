@@ -78,6 +78,9 @@ class StorageService:
     def generate_unique_filename(cls, original_filename: Optional[str]) -> str:
         """
         Generates a unique filename using a version 4 UUID, preserving the original extension.
+        - Security Decision: We completely discard the original user-supplied filename when writing to disk.
+          This neutralizes path traversal attacks (e.g. filename="../../etc/passwd") and prevents malicious
+          overwrite of system files or file collisions on host filesystems.
         """
         orig_ext = Path(original_filename or "").suffix.lower()
         return f"{uuid.uuid4().hex}{orig_ext}"
@@ -92,18 +95,23 @@ class StorageService:
         try:
             with open(destination_path, "wb") as buffer:
                 while True:
-                    # Read in 1MB chunks
+                    # Memory Safety Decision: Read the file in 1MB chunks instead of loading the entire
+                    # file into memory at once. This keeps the application's RAM footprint low and constant,
+                    # protecting the API service from Out-Of-Memory (OOM) crashes under concurrent uploads.
                     chunk = await upload_file.read(1024 * 1024)
                     if not chunk:
                         break
 
+                    # Enforce the maximum allowed file size dynamically at each step. This defends against
+                    # clients bypassing header checks (e.g., sending false Content-Length headers) and prevents
+                    # disk space exhaustion attacks (Denial of Service).
                     total_bytes += len(chunk)
                     if total_bytes > cls.MAX_UPLOAD_SIZE:
                         logger.warning(
                             "Upload aborted: Streamed bytes %d exceeded 100MB limit",
                             total_bytes,
                         )
-                        # Close buffer and cleanup partial file
+                        # Close buffer and cleanup partial file to avoid leaving orphaned disk blocks
                         buffer.close()
                         if destination_path.exists():
                             destination_path.unlink()

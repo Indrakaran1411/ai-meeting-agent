@@ -52,10 +52,19 @@ class SyncLogService:
         Returns:
             A 64-character lowercase SHA-256 hex string.
         """
+        # Hashing Design Decisions:
+        # 1. Pydantic mode='json' converts UUIDs and datetime objects to their standardized
+        #    string representation (e.g. ISO 8601), eliminating class serialization variations.
         raw = payload.model_dump(mode="json")
-        # Exclude generated_at — it changes every request but does not affect
-        # the logical identity of the payload.
+        
+        # 2. Exclude `generated_at` because it records the request dispatch time. If the same meeting
+        #    content is synced multiple times, the temporal metadata changes but the logical data
+        #    remains identical. Removing it guarantees hash stability.
         raw.pop("generated_at", None)
+        
+        # 3. Sort keys lexicographically and strip whitespace from delimiters (separators=(",", ":")).
+        #    This guards against Python version dictionary ordering discrepancies or formatting differences,
+        #    producing a 100% deterministic string representation.
         serialized = json.dumps(raw, sort_keys=True, separators=(",", ":"))
         digest = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
         logger.debug(

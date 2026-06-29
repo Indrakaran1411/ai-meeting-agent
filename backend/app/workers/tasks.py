@@ -13,7 +13,11 @@ from app.core.config import settings
 
 logger = logging.getLogger("app.workers.tasks")
 
-# Thread-local event loop storage to reuse loop across sequential Celery tasks
+# Thread-local event loop cache. Reusing a single loop across sequential Celery tasks
+# prevents SQLAlchemy connection pool conflicts. Since SQLAlchemy's AsyncEngine connection pool
+# is pinned to the event loop under which it was initialized, generating a new event loop
+# for every task execution would cause "Future attached to different loop" errors when
+# connections are recycled.
 _loop: Optional[asyncio.AbstractEventLoop] = None
 
 
@@ -43,6 +47,7 @@ def health_check() -> dict:
 async def async_process_meeting(task_id_str: str, meeting_id_str: str) -> None:
     """
     Async coroutine handling the actual database lookup and status transition.
+
     Orchestrates checking out the meeting, triggering TranscriptionService, and logging.
     """
     logger.info(
@@ -127,7 +132,8 @@ async def async_process_meeting(task_id_str: str, meeting_id_str: str) -> None:
                 task_id_str,
             )
 
-    # 2. Run TranscriptionService (Executed outside the session to free DB pool connection)
+    # 2. Run TranscriptionService (Executed outside the active database transaction session
+    # to avoid holding pool connections open during lengthy CPU-bound audio transcription).
     if file_path:
         logger.info(
             "Task: Initing transcription orchestration. meeting_id=%s, task_id=%s, file_path=%s",
@@ -139,7 +145,9 @@ async def async_process_meeting(task_id_str: str, meeting_id_str: str) -> None:
         from app.services.transcription_service import TranscriptionService
         
         try:
-            # Run transcription CPU-bound work in executor to keep event loop responsive
+            # We run the CPU-heavy, thread-safe Whisper transcription process in the loop's
+            # default ThreadPoolExecutor. This prevents blocking the asyncio event loop thread,
+            # keeping it responsive to other concurrent tasks (like connection heartbeats).
             loop = asyncio.get_running_loop()
             result = await loop.run_in_executor(
                 None,
@@ -270,6 +278,11 @@ async def async_process_meeting(task_id_str: str, meeting_id_str: str) -> None:
 
 
 
+# Celery background task registration configuration:
+# - bind=True: Exposes the task instance (self) to dynamically check retries and task IDs.
+# - autoretry_for=(Exception,): Retries on any runtime exceptions (e.g. Gemini API quota errors, temp DB drops).
+# - retry_backoff=True: Enables exponential delay backoff to prevent thundering herd requests on API recoverability.
+# - retry_jitter=True: Randomizes backoff delays slightly to prevent retry synchronization.
 @celery_app.task(
     bind=True,
     name="app.workers.tasks.process_meeting",

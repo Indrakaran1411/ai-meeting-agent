@@ -54,6 +54,11 @@ services:
       dockerfile: Dockerfile
     container_name: meeting_agent_worker
     command: celery -A app.workers.celery_app.celery_app worker --loglevel=info
+    # Single-Host File Exchange: Both backend and worker containers mount the same directory.
+    # When a meeting is uploaded, the API streams the file to `/workspace/uploads/meetings/`.
+    # Because they share this local host volume, the Celery worker can access the file at the
+    # identical filepath. For horizontal scaling in production, this should be replaced
+    # by object storage (e.g. S3) to avoid host node filesystem coupling.
     volumes:
       - ./backend:/workspace
     environment:
@@ -67,6 +72,9 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # Celery Worker Health Check: We run celery inspect ping to query the daemon status.
+    # If the worker process locks up, stops responding, or loses broker connectivity,
+    # Docker Compose will flag the container as unhealthy and restart it automatically.
     healthcheck:
       test: ["CMD-SHELL", "celery -A app.workers.celery_app.celery_app inspect ping"]
       interval: 10s
