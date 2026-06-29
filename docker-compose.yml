@@ -41,6 +41,7 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+      - PM_WEBHOOK_URL=${PM_WEBHOOK_URL}
     depends_on:
       db:
         condition: service_healthy
@@ -60,6 +61,7 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - CLAUDE_API_KEY=${CLAUDE_API_KEY}
+      - PM_WEBHOOK_URL=${PM_WEBHOOK_URL}
     depends_on:
       db:
         condition: service_healthy
