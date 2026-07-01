@@ -7,20 +7,16 @@ All notable changes to the **Meeting Intelligence Agent** project are documented
 ## [1.1.0] - 2026-07-01
 
 ### Added
-*   **Semantic Vector Search (`GET /api/v1/search/semantic`) (T13.1 - T13.5)**:
-    *   Added pgvector `Vector(768)` columns to `meetings` and `transcripts` database tables.
-    *   Created `3714d8d5d642` database migration enabling the `vector` PostgreSQL extension and updating schemas.
-    *   Developed `EmbeddingService` generating 768-dimensional embeddings using `gemini-embedding-001`.
-    *   Hooked up automated embedding generation in the Celery tasks pipeline immediately following meeting analysis completion.
-    *   Implemented REST API route `/api/v1/search/semantic` performing cosine distance queries across summaries and transcripts, returning scores normalized to similarity percentages.
-*   **Dashboard AI Search View (`/search`) (T13.6)**:
-    *   Built typesafe Next.js 15 search page displaying query inputs, skeletons, and ranked matching items.
-    *   Highlights summary matches and transcript snippets separately, with direct linking to meeting detail views.
-    *   Added search link directly inside the desktop and mobile navigation Sidebars.
-*   **Embedding Backfill Utility**:
-    *   Implemented `scratch_populate_embeddings.py` to seed embeddings retroactively for all historical records.
-*   **Documentation Alignment**:
-    *   Synchronized the Gantt charts, Task Breakdown sheets, Implementation specifications, and installation readmes to match the current release.
+*   **Semantic Vector Search Refinement (`GET /api/v1/search/semantic`) (T13.1 - T13.5)**:
+    *   Refactored semantic search query execution out of API routers into a decoupled `SearchService` layer.
+    *   Added support for limit & offset pagination and minimum similarity threshold score filtering.
+    *   Added strict backend validations rejecting empty query strings (HTTP 400) and validating parameter bounds (HTTP 422).
+    *   Constructed a `pytest` suite verifying embedding generation, search ranking order, and pagination filters.
+*   **AI Search UI Workspace Refinement (`/search`) (T13.6)**:
+    *   Extended Next.js search page with full Previous/Next offset pagination buttons.
+    *   Implemented client-side multi-word keyword highlighting for matches in meeting summaries and transcripts.
+    *   Added interactive minimum similarity slider dynamically filtering result scores.
+    *   Formatted segment timestamps (`MM:SS`) and speaker metadata for transcript matches.
 
 ---
 

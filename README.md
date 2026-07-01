@@ -66,7 +66,9 @@ Celery Worker
   │
   ├─► Google Gemini API (google-genai) ──► [Structured Insight Extraction]
   │
-  ├─► PostgreSQL Database ──► [Save Summary, Action Items, Decisions, Risks, Status=COMPLETED]
+  ├─► Embedding Service ──► [Generate 768-dim embeddings via gemini-embedding-001]
+  │
+  ├─► PostgreSQL Database ──► [Save Summary, Action Items, Decisions, Risks, Vector Embeddings, Status=COMPLETED]
   │
   └─► Webhook Dispatcher ──► [POST to PM Webhook URL (Idempotent check via SyncLogs)]
 ```
@@ -79,7 +81,7 @@ Celery Worker
 * **Frontend**: Next.js 15, React 19, TypeScript, Tailwind CSS v4, Lucide React, Axios, TanStack React Query, Sonner
 * **Database**: PostgreSQL 16 (with `pgvector` extension), Node-postgres (`pg`) for the MCP server
 * **Queue / Broker**: Redis 7, Celery 5.3
-* **AI**: Google Gemini (`gemini-2.5-flash` model for structured extraction)
+* **AI**: Google Gemini (`gemini-2.5-flash` model for structured extraction, `gemini-embedding-001` model for text embeddings)
 * **Infrastructure**: Docker, Docker Compose, Docker Volumes
 * **Dev Tools**: `@modelcontextprotocol/sdk` (Node.js), MCP Inspector, HTTPX Mocking
 
@@ -347,6 +349,9 @@ DATABASE_URL="postgresql://postgres:postgrespassword@localhost:5432/meeting_agen
 
 ### Meeting Details Tabbed View
 *(Placeholder for Details page screenshot showing editable action items and speaker segments)*
+
+### AI Semantic Search Workspace
+*(Placeholder for AI Search screenshot showing similarity sliders, paginated ranked cards, and highlighted matches)*
 
 ---
 

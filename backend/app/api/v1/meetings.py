@@ -30,10 +30,9 @@ from app.schemas.meeting import (
     COMMON_ERRORS,
     TranscriptResponse,
     SyncLogResponse,
-    ChatSignalResponse,
-    SemanticSearchResponse,
-    SemanticSearchResultItem
+    ChatSignalResponse
 )
+from app.schemas.search import SemanticSearchResponse
 from app.services.meeting_service import MeetingService
 from app.services.storage_service import StorageService
 from app.services.sync_service import SyncService
@@ -269,105 +268,31 @@ async def search_meetings(
 async def semantic_search(
     q: str = Query(..., description="The query string to search for"),
     limit: int = Query(10, ge=1, le=100, description="Max results to retrieve"),
+    offset: int = Query(0, ge=0, description="Pagination offset"),
+    minimum_similarity: float = Query(0.0, ge=0.0, le=1.0, description="Minimum similarity threshold (0.0 to 1.0)"),
     db: AsyncSession = Depends(get_db),
 ):
-    logger.info("API: Semantic search requested for query q=%s, limit=%d", q, limit)
+    logger.info(
+        "API: Semantic search requested. q=%s, limit=%d, offset=%d, minimum_similarity=%.2f",
+        q, limit, offset, minimum_similarity
+    )
     
-    if not q.strip():
+    if not q or not q.strip():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Search query 'q' cannot be empty or whitespace only."
         )
 
     try:
-        from app.services.embedding_service import EmbeddingService
-        from app.models.meeting import Meeting
-        from app.models.transcript import Transcript
-        from sqlalchemy import select
-
-        # 1. Generate embedding for query
-        query_embedding = await EmbeddingService.get_embedding(q)
-
-        # 2. Query meeting summaries matching query semantically
-        summary_distance = Meeting.summary_embedding.cosine_distance(query_embedding)
-        summary_stmt = (
-            select(Meeting, (1 - summary_distance).label("score"))
-            .where(Meeting.summary_embedding != None)
-            .order_by(summary_distance.asc())
-            .limit(limit)
+        from app.services.search_service import SearchService
+        results = await SearchService.semantic_search(
+            db=db,
+            q=q,
+            limit=limit,
+            offset=offset,
+            minimum_similarity=minimum_similarity
         )
-        summary_results = (await db.execute(summary_stmt)).all()
-
-        # 3. Query transcript segments matching query semantically
-        transcript_distance = Transcript.embedding.cosine_distance(query_embedding)
-        transcript_stmt = (
-            select(Transcript, Meeting, (1 - transcript_distance).label("score"))
-            .join(Meeting, Transcript.meeting_id == Meeting.id)
-            .where(Transcript.embedding != None)
-            .order_by(transcript_distance.asc())
-            .limit(limit)
-        )
-        transcript_results = (await db.execute(transcript_stmt)).all()
-
-        # 4. Merge and sort both sets of results by similarity score descending
-        merged_results = []
-
-        # Add summary matches
-        for meeting, score in summary_results:
-            score_val = float(score) if score is not None else 0.0
-            
-            meeting_dto = MeetingListResponseItem(
-                id=meeting.id,
-                title=meeting.title,
-                status=meeting.status,
-                created_at=meeting.created_at,
-                meeting_date=meeting.meeting_date,
-                duration_minutes=meeting.duration_minutes,
-                source=meeting.source,
-                summary_preview=meeting.summary[:200] + "..." if meeting.summary and len(meeting.summary) > 200 else meeting.summary
-            )
-            
-            merged_results.append(
-                SemanticSearchResultItem(
-                    meeting=meeting_dto,
-                    relevant_transcript_chunk=None,
-                    similarity_score=score_val,
-                    matching_summary=True
-                )
-            )
-
-        # Add transcript matches
-        for transcript, meeting, score in transcript_results:
-            score_val = float(score) if score is not None else 0.0
-            
-            meeting_dto = MeetingListResponseItem(
-                id=meeting.id,
-                title=meeting.title,
-                status=meeting.status,
-                created_at=meeting.created_at,
-                meeting_date=meeting.meeting_date,
-                duration_minutes=meeting.duration_minutes,
-                source=meeting.source,
-                summary_preview=meeting.summary[:200] + "..." if meeting.summary and len(meeting.summary) > 200 else meeting.summary
-            )
-            
-            merged_results.append(
-                SemanticSearchResultItem(
-                    meeting=meeting_dto,
-                    relevant_transcript_chunk=transcript.content,
-                    similarity_score=score_val,
-                    matching_summary=False
-                )
-            )
-
-        # Sort combined list by similarity score descending
-        merged_results.sort(key=lambda x: x.similarity_score, reverse=True)
-
-        # Truncate to requested limit
-        final_results = merged_results[:limit]
-
-        return SemanticSearchResponse(results=final_results)
-
+        return results
     except Exception as e:
         logger.error("API: Semantic search failed. Error: %s", str(e), exc_info=True)
         raise HTTPException(

@@ -141,10 +141,16 @@ export interface MeetingSyncResponse {
 }
 
 export interface SemanticSearchResultItem {
-  meeting: MeetingListResponseItem;
-  relevant_transcript_chunk: string | null;
+  meeting_id: string;
+  meeting_title: string;
+  meeting_date: string | null;
   similarity_score: number;
-  matching_summary: boolean;
+  result_type: 'summary' | 'transcript';
+  matched_text: string;
+  summary_preview: string | null;
+  speaker: string | null;
+  start_time: number | null;
+  end_time: number | null;
 }
 
 export interface SemanticSearchResponse {
@@ -152,9 +158,14 @@ export interface SemanticSearchResponse {
 }
 
 export const api = {
-  semanticSearch: async (q: string, limit: number = 10): Promise<SemanticSearchResponse> => {
+  semanticSearch: async (
+    q: string,
+    limit: number = 10,
+    offset: number = 0,
+    minimum_similarity: number = 0.0
+  ): Promise<SemanticSearchResponse> => {
     const res = await axiosInstance.get<SemanticSearchResponse>('/search/semantic', {
-      params: { q, limit }
+      params: { q, limit, offset, minimum_similarity }
     });
     return res.data;
   },
