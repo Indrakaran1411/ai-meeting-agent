@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Optional
 from sqlalchemy import DateTime, Index, Integer, String, Text, Boolean, func
 from sqlalchemy.dialects.postgresql import ENUM, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from pgvector.sqlalchemy import Vector
 
 from app.db.base import Base
 from app.models.enums import MeetingStatus
@@ -50,6 +51,9 @@ class Meeting(Base):
     )
     summary: Mapped[Optional[str]] = mapped_column(
         Text, nullable=True, comment="AI-generated meeting summary"
+    )
+    summary_embedding: Mapped[Optional[list[float]]] = mapped_column(
+        Vector(768), nullable=True, comment="AI-generated meeting summary embedding vector"
     )
 
     created_at: Mapped[datetime] = mapped_column(

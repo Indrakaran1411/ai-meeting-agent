@@ -5,7 +5,7 @@ from datetime import datetime, date
 from typing import Optional, List, Any
 from pydantic import BaseModel, Field, ConfigDict
 
-from app.models.enums import MeetingStatus, InsightStatus, RiskSeverity
+from app.models.enums import MeetingStatus, InsightStatus, RiskSeverity, SignalType, SyncStatus
 
 
 class ErrorDetail(BaseModel):
@@ -593,5 +593,81 @@ class MeetingSyncResponse(BaseModel):
         description="Human-readable explanation when skipped=True",
         example="Payload already synchronized."
     )
+
+
+class TranscriptResponse(BaseModel):
+    """Schema representing an individual transcript segment."""
+    id: uuid.UUID
+    meeting_id: uuid.UUID
+    speaker: Optional[str] = Field(default=None, description="Display name of the speaker")
+    content: str = Field(..., description="Transcribed content/text segment")
+    segment_index: int = Field(..., description="Order index of segment in the transcript")
+    start_time: float = Field(..., description="Start timestamp of segment in seconds")
+    end_time: float = Field(..., description="End timestamp of segment in seconds")
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SyncLogResponse(BaseModel):
+    """Schema representing a synchronization attempt log."""
+    id: uuid.UUID
+    meeting_id: uuid.UUID
+    request_id: Optional[str] = Field(default=None, description="Correlation request ID")
+    webhook_url: Optional[str] = Field(default=None, description="Target webhook URL")
+    status: SyncStatus = Field(..., description="Outcome status of the synchronization")
+    http_status: Optional[int] = Field(default=None, description="Downstream HTTP status code")
+    response_message: Optional[str] = Field(default=None, description="Downstream response or error message")
+    payload_hash: Optional[str] = Field(default=None, description="Payload hash for idempotency")
+    dispatched_at: Optional[datetime] = Field(default=None, description="Timestamp when dispatch completed")
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ChatSignalResponse(BaseModel):
+    """Schema representing a classified chat signal."""
+    id: uuid.UUID
+    source: str = Field(..., description="Platform origin (slack/teams/etc)")
+    channel_id: str = Field(..., description="Channel or conversation identifier")
+    message_id: str = Field(..., description="Unique message identifier from platform")
+    sender_name: Optional[str] = Field(default=None, description="Display name of sender")
+    content: str = Field(..., description="Message text content")
+    signal_type: SignalType = Field(..., description="Signal classification category")
+    confidence: Optional[float] = Field(default=None, description="Classification confidence rating")
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SemanticSearchResultItem(BaseModel):
+    """Schema representing a single ranked result in a semantic vector search."""
+    meeting: MeetingListResponseItem = Field(
+        ...,
+        description="The matching meeting metadata"
+    )
+    relevant_transcript_chunk: Optional[str] = Field(
+        default=None,
+        description="The transcript segment text that matched semantically, or None if matched the summary"
+    )
+    similarity_score: float = Field(
+        ...,
+        description="The cosine similarity score calculated as 1 - cosine_distance"
+    )
+    matching_summary: bool = Field(
+        default=False,
+        description="Flag indicating if the semantic match was on the meeting's high-level summary"
+    )
+
+
+class SemanticSearchResponse(BaseModel):
+    """Schema representing the list of results returned from a semantic vector search query."""
+    results: List[SemanticSearchResultItem] = Field(
+        ...,
+        description="Chronologically or similarity-ranked semantic search outcomes"
+    )
+
 
 

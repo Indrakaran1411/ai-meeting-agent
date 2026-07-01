@@ -4,6 +4,48 @@ All notable changes to the **Meeting Intelligence Agent** project are documented
 
 ---
 
+## [1.1.0] - 2026-07-01
+
+### Added
+*   **Semantic Vector Search (`GET /api/v1/search/semantic`) (T13.1 - T13.5)**:
+    *   Added pgvector `Vector(768)` columns to `meetings` and `transcripts` database tables.
+    *   Created `3714d8d5d642` database migration enabling the `vector` PostgreSQL extension and updating schemas.
+    *   Developed `EmbeddingService` generating 768-dimensional embeddings using `gemini-embedding-001`.
+    *   Hooked up automated embedding generation in the Celery tasks pipeline immediately following meeting analysis completion.
+    *   Implemented REST API route `/api/v1/search/semantic` performing cosine distance queries across summaries and transcripts, returning scores normalized to similarity percentages.
+*   **Dashboard AI Search View (`/search`) (T13.6)**:
+    *   Built typesafe Next.js 15 search page displaying query inputs, skeletons, and ranked matching items.
+    *   Highlights summary matches and transcript snippets separately, with direct linking to meeting detail views.
+    *   Added search link directly inside the desktop and mobile navigation Sidebars.
+*   **Embedding Backfill Utility**:
+    *   Implemented `scratch_populate_embeddings.py` to seed embeddings retroactively for all historical records.
+*   **Documentation Alignment**:
+    *   Synchronized the Gantt charts, Task Breakdown sheets, Implementation specifications, and installation readmes to match the current release.
+
+---
+
+## [1.0.0] - 2026-07-01
+
+### Added
+*   **Next.js 15 Frontend Client (`/frontend`) (T12.1 - T12.6)**:
+    *   Constructed a responsive, typesafe dashboard web client using Next.js 15, React 19, Tailwind CSS v4, shadcn/ui, and TanStack React Query.
+    *   **Consolidated Dashboard Page**: Implemented KPI metrics card grid, recent meetings table, and draft task list.
+    *   **Audio Ingestion Page**: Created drag-and-drop uploader supporting progress bar tracking and Celery worker polling.
+    *   **Meetings Log Page**: Renders paginated, searchable meeting records table with status filters and cascading deletes.
+    *   **Tabbed Details Page**: Renders meeting summaries, speaker-marked transcripts, inline actions/decisions/risks editing forms, and out-of-meeting chat signal flows.
+    *   **Webhook Synchronization Page**: Integrates the outbound project sync button, showing SHA-256 payload hashes and attempt counters.
+*   **CORS Configuration & allowedDevOrigins**:
+    *   Registered `CORSMiddleware` in FastAPI to whitelist loopback and localhost connections on ports 3000, 3001, 3002, and 3003.
+    *   Added local network origin mappings to `allowedDevOrigins` in `next.config.ts`.
+*   **Cascading Meeting Deletion Router**:
+    *   Implemented `DELETE /api/v1/meetings/{id}` endpoint to purge meeting files, transcripts, insights, and sync audits.
+
+### Fixed
+*   **FastAPI Router NameError**: Resolved circular dependency module load crash by importing schemas globally rather than inline.
+*   **TypeScript & Linter Hardening**: Resolved typescript compilation issues by removing explicit `any` types, cleaning up unused imports, and using typesafe casting.
+
+---
+
 ## [0.1.0] - 2026-06-30
 
 ### Added

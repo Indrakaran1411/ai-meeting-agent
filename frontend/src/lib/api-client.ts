@@ -140,7 +140,25 @@ export interface MeetingSyncResponse {
   reason: string | null;
 }
 
+export interface SemanticSearchResultItem {
+  meeting: MeetingListResponseItem;
+  relevant_transcript_chunk: string | null;
+  similarity_score: number;
+  matching_summary: boolean;
+}
+
+export interface SemanticSearchResponse {
+  results: SemanticSearchResultItem[];
+}
+
 export const api = {
+  semanticSearch: async (q: string, limit: number = 10): Promise<SemanticSearchResponse> => {
+    const res = await axiosInstance.get<SemanticSearchResponse>('/search/semantic', {
+      params: { q, limit }
+    });
+    return res.data;
+  },
+
   getDashboard: async (): Promise<DashboardResponse> => {
     const res = await axiosInstance.get<DashboardResponse>('/dashboard');
     return res.data;

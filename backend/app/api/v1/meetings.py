@@ -27,7 +27,12 @@ from app.schemas.meeting import (
     DashboardResponse,
     ErrorResponse,
     MeetingSyncResponse,
-    COMMON_ERRORS
+    COMMON_ERRORS,
+    TranscriptResponse,
+    SyncLogResponse,
+    ChatSignalResponse,
+    SemanticSearchResponse,
+    SemanticSearchResultItem
 )
 from app.services.meeting_service import MeetingService
 from app.services.storage_service import StorageService
@@ -247,6 +252,128 @@ async def search_meetings(
         total_count
     )
     return MeetingListResponse(total_count=total_count, items=response_items)
+
+
+@router.get(
+    "/search/semantic",
+    response_model=SemanticSearchResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Semantic vector search across meeting summaries and transcripts",
+    description=(
+        "Generates an embedding for the search query, performs a cosine similarity vector search "
+        "on meeting summaries and transcript segment vectors, and returns ranked results."
+    ),
+    response_description="A ranked list of meetings and/or transcript segments matching the query semantically",
+    responses=COMMON_ERRORS,
+)
+async def semantic_search(
+    q: str = Query(..., description="The query string to search for"),
+    limit: int = Query(10, ge=1, le=100, description="Max results to retrieve"),
+    db: AsyncSession = Depends(get_db),
+):
+    logger.info("API: Semantic search requested for query q=%s, limit=%d", q, limit)
+    
+    if not q.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Search query 'q' cannot be empty or whitespace only."
+        )
+
+    try:
+        from app.services.embedding_service import EmbeddingService
+        from app.models.meeting import Meeting
+        from app.models.transcript import Transcript
+        from sqlalchemy import select
+
+        # 1. Generate embedding for query
+        query_embedding = await EmbeddingService.get_embedding(q)
+
+        # 2. Query meeting summaries matching query semantically
+        summary_distance = Meeting.summary_embedding.cosine_distance(query_embedding)
+        summary_stmt = (
+            select(Meeting, (1 - summary_distance).label("score"))
+            .where(Meeting.summary_embedding != None)
+            .order_by(summary_distance.asc())
+            .limit(limit)
+        )
+        summary_results = (await db.execute(summary_stmt)).all()
+
+        # 3. Query transcript segments matching query semantically
+        transcript_distance = Transcript.embedding.cosine_distance(query_embedding)
+        transcript_stmt = (
+            select(Transcript, Meeting, (1 - transcript_distance).label("score"))
+            .join(Meeting, Transcript.meeting_id == Meeting.id)
+            .where(Transcript.embedding != None)
+            .order_by(transcript_distance.asc())
+            .limit(limit)
+        )
+        transcript_results = (await db.execute(transcript_stmt)).all()
+
+        # 4. Merge and sort both sets of results by similarity score descending
+        merged_results = []
+
+        # Add summary matches
+        for meeting, score in summary_results:
+            score_val = float(score) if score is not None else 0.0
+            
+            meeting_dto = MeetingListResponseItem(
+                id=meeting.id,
+                title=meeting.title,
+                status=meeting.status,
+                created_at=meeting.created_at,
+                meeting_date=meeting.meeting_date,
+                duration_minutes=meeting.duration_minutes,
+                source=meeting.source,
+                summary_preview=meeting.summary[:200] + "..." if meeting.summary and len(meeting.summary) > 200 else meeting.summary
+            )
+            
+            merged_results.append(
+                SemanticSearchResultItem(
+                    meeting=meeting_dto,
+                    relevant_transcript_chunk=None,
+                    similarity_score=score_val,
+                    matching_summary=True
+                )
+            )
+
+        # Add transcript matches
+        for transcript, meeting, score in transcript_results:
+            score_val = float(score) if score is not None else 0.0
+            
+            meeting_dto = MeetingListResponseItem(
+                id=meeting.id,
+                title=meeting.title,
+                status=meeting.status,
+                created_at=meeting.created_at,
+                meeting_date=meeting.meeting_date,
+                duration_minutes=meeting.duration_minutes,
+                source=meeting.source,
+                summary_preview=meeting.summary[:200] + "..." if meeting.summary and len(meeting.summary) > 200 else meeting.summary
+            )
+            
+            merged_results.append(
+                SemanticSearchResultItem(
+                    meeting=meeting_dto,
+                    relevant_transcript_chunk=transcript.content,
+                    similarity_score=score_val,
+                    matching_summary=False
+                )
+            )
+
+        # Sort combined list by similarity score descending
+        merged_results.sort(key=lambda x: x.similarity_score, reverse=True)
+
+        # Truncate to requested limit
+        final_results = merged_results[:limit]
+
+        return SemanticSearchResponse(results=final_results)
+
+    except Exception as e:
+        logger.error("API: Semantic search failed. Error: %s", str(e), exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Semantic search operation failed: {str(e)}"
+        )
 
 
 @router.get(
@@ -797,3 +924,125 @@ async def sync_meeting(
         sync_log_id=sync_log.id,
         skipped=False,
     )
+
+
+@router.get(
+    "/meetings/{meeting_id}/transcript",
+    response_model=List[TranscriptResponse],
+    status_code=status.HTTP_200_OK,
+    summary="Get transcript segments of a specific meeting",
+    description="Retrieves all transcript segments associated with a meeting sorted by segment index.",
+    responses=COMMON_ERRORS,
+)
+async def get_meeting_transcript(
+    meeting_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models.transcript import Transcript
+    from sqlalchemy import select
+
+    logger.info("API: Fetching transcript segments. meeting_id=%s", meeting_id)
+    meeting = await MeetingService.get_meeting_by_id(db, meeting_id)
+    if not meeting:
+        logger.warning("API: Meeting not found. meeting_id=%s", meeting_id)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Meeting with ID {meeting_id} not found.",
+        )
+
+    stmt = select(Transcript).where(Transcript.meeting_id == meeting_id).order_by(Transcript.segment_index.asc())
+    result = await db.execute(stmt)
+    segments = result.scalars().all()
+    logger.info("API: Returning %d transcript segments for meeting_id=%s", len(segments), meeting_id)
+    return segments
+
+
+@router.get(
+    "/meetings/{meeting_id}/sync-logs",
+    response_model=List[SyncLogResponse],
+    status_code=status.HTTP_200_OK,
+    summary="Get synchronization logs of a specific meeting",
+    description="Retrieves all sync logs associated with a meeting sorted by creation date descending.",
+    responses=COMMON_ERRORS,
+)
+async def get_meeting_sync_logs(
+    meeting_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models.sync_log import SyncLog
+    from sqlalchemy import select
+
+    logger.info("API: Fetching sync logs. meeting_id=%s", meeting_id)
+    meeting = await MeetingService.get_meeting_by_id(db, meeting_id)
+    if not meeting:
+        logger.warning("API: Meeting not found. meeting_id=%s", meeting_id)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Meeting with ID {meeting_id} not found.",
+        )
+
+    stmt = select(SyncLog).where(SyncLog.meeting_id == meeting_id).order_by(SyncLog.created_at.desc())
+    result = await db.execute(stmt)
+    logs = result.scalars().all()
+    logger.info("API: Returning %d sync logs for meeting_id=%s", len(logs), meeting_id)
+    return logs
+
+
+@router.get(
+    "/chat-signals",
+    response_model=List[ChatSignalResponse],
+    status_code=status.HTTP_200_OK,
+    summary="Get all classified chat signals",
+    description="Retrieves a list of all classified Slack/Teams chat signals sorted by creation date descending.",
+    responses=COMMON_ERRORS,
+)
+async def get_chat_signals(
+    limit: int = Query(50, ge=1, le=100, description="Maximum number of records to return"),
+    offset: int = Query(0, ge=0, description="Offset index for pagination"),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models.chat_signal import ChatSignal
+    from sqlalchemy import select
+
+    logger.info("API: Fetching chat signals. limit=%d, offset=%d", limit, offset)
+    stmt = select(ChatSignal).order_by(ChatSignal.created_at.desc()).offset(offset).limit(limit)
+    result = await db.execute(stmt)
+    signals = result.scalars().all()
+    logger.info("API: Returning %d chat signals", len(signals))
+    return signals
+
+
+@router.delete(
+    "/meetings/{meeting_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a specific meeting",
+    description="Deletes a meeting and all associated database records (transcripts, action items, decisions, risks, sync logs).",
+    responses=COMMON_ERRORS,
+)
+async def delete_meeting(
+    meeting_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models.meeting import Meeting
+    
+    logger.info("API: DELETE meeting request. meeting_id=%s", meeting_id)
+    meeting = await db.get(Meeting, meeting_id)
+    if not meeting:
+        logger.warning("API: Meeting not found for deletion. meeting_id=%s", meeting_id)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Meeting with ID {meeting_id} not found."
+        )
+    
+    try:
+        await db.delete(meeting)
+        await db.commit()
+        logger.info("API: Meeting deleted successfully. meeting_id=%s", meeting_id)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    except Exception as e:
+        await db.rollback()
+        logger.error("API: Failed to delete meeting. meeting_id=%s. Error: %s", meeting_id, str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete meeting from database."
+        )

@@ -10,7 +10,8 @@ import {
   Menu, 
   X, 
   Compass,
-  Zap
+  Zap,
+  Search
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -22,6 +23,7 @@ export default function Sidebar() {
     { name: 'Dashboard', href: '/', icon: LayoutDashboard },
     { name: 'Meetings', href: '/meetings', icon: Video },
     { name: 'Upload Meeting', href: '/upload', icon: UploadCloud },
+    { name: 'AI Semantic Search', href: '/search', icon: Search },
   ];
 
   return (
@@ -122,7 +124,7 @@ export default function Sidebar() {
             <Zap className="h-3.5 w-3.5 text-indigo-500 fill-indigo-500" />
             <div>
               <p className="font-semibold text-foreground">AI Worker Active</p>
-              <p>v0.1.0 (Next.js 15)</p>
+              <p>v1.0.0 (Next.js 15)</p>
             </div>
           </div>
         </div>

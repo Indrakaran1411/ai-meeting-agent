@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Optional
 from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from pgvector.sqlalchemy import Vector
 
 from app.db.base import Base
 
@@ -41,6 +42,9 @@ class Transcript(Base):
     )
     end_time: Mapped[Optional[float]] = mapped_column(
         Float, nullable=True, comment="Segment end time in seconds"
+    )
+    embedding: Mapped[Optional[list[float]]] = mapped_column(
+        Vector(768), nullable=True, comment="Transcript segment content embedding vector"
     )
 
     created_at: Mapped[datetime] = mapped_column(

@@ -276,6 +276,27 @@ async def async_process_meeting(task_id_str: str, meeting_id_str: str) -> None:
                 )
                 raise db_err
 
+        # 6. Generate and store semantic embeddings for summary and transcripts
+        logger.info(
+            "Task: Generating and storing semantic vector embeddings. meeting_id=%s, task_id=%s",
+            meeting_uuid,
+            task_id_str,
+        )
+        async with async_session_maker() as session:
+            try:
+                from app.services.embedding_service import EmbeddingService
+                await EmbeddingService.update_meeting_embeddings(session, meeting_uuid)
+            except Exception as embed_err:
+                logger.error(
+                    "Task: Failed to generate or save semantic embeddings. meeting_id=%s, task_id=%s. Error: %s",
+                    meeting_uuid,
+                    task_id_str,
+                    str(embed_err),
+                    exc_info=True,
+                )
+                # We raise the exception to let Celery retry the task
+                raise embed_err
+
 
 
 # Celery background task registration configuration:
